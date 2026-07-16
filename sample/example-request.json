@@ -1,0 +1,45 @@
+{
+  "apiVersion": "1.0",
+  "id": "aa7e88bb-9f88-4318-90c6-beffe5d9dc37",
+  "sharingId": 10,
+  "created": "2024-04-04T09:11:00Z",
+  "updated": "2024-04-04T09:12:21Z",
+  "data": {
+    "provider": {
+      "name": "Demo Provider",
+      "url": "https://your-endpoint-url.com"
+    },
+    "externalCustomerIdentification": "d84a4a14-9ad8-481d-a0d2-261fb952bbc3",
+    "boxdata": {
+      "BD_BOX_ID": "620e2dc454694d3cddaf1341",
+      "BD_TIME_RECEIVED": 1700818593709,
+      "BD_DATA_TYPE": 0,
+      "BD_IS_MOVING": true,
+      "BD_COUPLED": true,
+      "vehicle": {
+        "VH_ID": "HD305081",
+        "VH_CHASSIS": "WKESD000001040923",
+        "VH_LICENSE": "F0627956",
+        "VH_INTERNAL_NUMBER": "358174065555816",
+        "VH_ASSET_NAME": "ABC1234"
+      },
+      "gps": {
+        "BD_GPS_LATITUDE": 52.37,
+        "BD_GPS_LONGITUDE": 8.468,
+        "BD_GPS_LOCATION": "Auf d. Imlage 7, 32351 Stemwede, DE",
+        "BD_GPS_SPEED": 65,
+        "BD_GPS_HEIGHT": 41,
+        "BD_GPS_DIRECTION": 221,
+        "BD_GPS_SATELLITES": 8
+      },
+      "location": {
+        "BD_DETAILED_LOCATION_ISO_COUNTRY_CODE": "DE",
+        "BD_DETAILED_LOCATION_COUNTRY": "Deutschland",
+        "BD_DETAILED_LOCATION_POSTAL_CODE": "32351",
+        "BD_DETAILED_LOCATION_CITY": "Stemwede",
+        "BD_DETAILED_LOCATION_STREET": "Auf der Imlage",
+        "BD_DETAILED_LOCATION_STREET_NUMBER": "7"
+      }
+    }
+  }
+}

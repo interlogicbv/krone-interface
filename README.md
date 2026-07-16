@@ -1,0 +1,57 @@
+# krone-interface
+
+Webhook-ontvanger voor de **KRONE Telematics Push Default Service**: ontvangt de geo-locaties (en overige boxdata) van Krone-trailers en logt deze.
+
+Krone werkt met een *push*-model: je registreert in het Krone DataCenter een provider met de URL van dit programma, en Krone POST't vervolgens JSON-berichten naar dat endpoint. Dit programma implementeert het verwachte request/response-contract (Push Default Service v1.8.1).
+
+## Snel starten
+
+```bash
+npm install
+npm run dev          # development met auto-reload (poort 3000)
+```
+
+Test met het meegeleverde voorbeeld-payload:
+
+```bash
+curl -X POST http://localhost:3000/krone/push \
+  -H 'Content-Type: application/json' \
+  -d @sample/example-request.json
+```
+
+Productie:
+
+```bash
+npm run build
+npm start
+```
+
+## Configuratie (omgevingsvariabelen)
+
+| Variabele | Default | Omschrijving |
+|---|---|---|
+| `PORT` | `3000` | Poort waarop de server luistert |
+| `HOST` | `0.0.0.0` | Bind-adres |
+| `WEBHOOK_PATH` | `/krone/push` | Pad waarop Krone-pushes binnenkomen |
+| `BASIC_AUTH_USER` | *(uit)* | Basic Auth gebruikersnaam; samen met wachtwoord activeert dit authenticatie |
+| `BASIC_AUTH_PASSWORD` | *(uit)* | Verwacht wachtwoord. Krone stuurt het in het portaal geconfigureerde wachtwoord als SHA-256-hash; zowel de ruwe waarde als de hash worden geaccepteerd |
+| `ENFORCE_IP_ALLOWLIST` | `false` | Bij `true` worden alleen requests van de officiële Krone push-IP's (`85.236.61.180`, `85.236.61.181`) geaccepteerd |
+
+## Contract met Krone
+
+- **Succes**: HTTP `201` met body `{ "id": "<uuid uit request>", "received": "<ISO 8601>", "status": "OK" }`
+- **Fout**: HTTP `400` met body `{ "id", "received", "status": "ERROR", "error": { "code", "message" } }`
+- Zonder geldig antwoord bewaart Krone de data 3 dagen in een queue; daarna stopt de service met sturen. Zorg dus dat het endpoint publiek bereikbaar is en de Krone-IP's niet door een firewall worden geblokkeerd.
+
+## Structuur
+
+- [src/index.ts](src/index.ts) — entrypoint, start de server
+- [src/server.ts](src/server.ts) — Fastify-server met het webhook-endpoint, auth en logging
+- [src/config.ts](src/config.ts) — configuratie via env-variabelen
+- [src/types/krone.ts](src/types/krone.ts) — TypeScript-types van het Krone-payload (Swagger v1.8.1 + Boxdata Fields v1.8.1)
+- [sample/example-request.json](sample/example-request.json) — voorbeeld-push zoals Krone die stuurt
+
+## Endpoints
+
+- `POST /krone/push` — ontvangt Krone-pushes; logt per push een samenvatting (voertuig, lat/lon, adres, snelheid, richting, GPS-tijd)
+- `GET /health` — healthcheck
