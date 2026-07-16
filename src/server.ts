@@ -18,16 +18,38 @@ function safeEquals(a: string, b: string): boolean {
   return bufA.length === bufB.length && timingSafeEqual(bufA, bufB);
 }
 
+interface AuthResult {
+  ok: boolean;
+  /** Diagnostic detail for the log on failure; never contains the password itself. */
+  reason?: string;
+  sentUser?: string;
+}
+
 /** Checks Basic Auth; the password may be sent raw or SHA-256 hashed (Krone sends the hash). */
-function isAuthorized(header: string | undefined, user: string, password: string): boolean {
-  if (!header?.startsWith('Basic ')) return false;
+function checkAuth(header: string | undefined, user: string, password: string): AuthResult {
+  if (!header) return { ok: false, reason: 'no authorization header' };
+  if (!header.startsWith('Basic ')) return { ok: false, reason: 'not basic auth' };
   const decoded = Buffer.from(header.slice(6), 'base64').toString('utf8');
   const separator = decoded.indexOf(':');
-  if (separator < 0) return false;
+  if (separator < 0) return { ok: false, reason: 'malformed basic auth value' };
   const sentUser = decoded.slice(0, separator);
   const sentPassword = decoded.slice(separator + 1);
-  if (!safeEquals(sentUser, user)) return false;
-  return safeEquals(sentPassword, password) || safeEquals(sentPassword, sha256Hex(password));
+  if (!safeEquals(sentUser, user)) {
+    return { ok: false, reason: 'unknown username', sentUser };
+  }
+  const looksHashed = /^[0-9a-fA-F]{64}$/.test(sentPassword);
+  const ok =
+    safeEquals(sentPassword, password) ||
+    safeEquals(sentPassword.toLowerCase(), sha256Hex(password)) ||
+    safeEquals(sentPassword.toLowerCase(), sha256Hex(password.trim()));
+  if (ok) return { ok: true };
+  return {
+    ok: false,
+    sentUser,
+    reason: looksHashed
+      ? 'password mismatch (received a SHA-256 hash, but not of the configured password)'
+      : 'password mismatch (received a plain password)',
+  };
 }
 
 /** Renders the parts of a push we care about (geo location) as a single log-friendly object. */
@@ -94,9 +116,12 @@ export function buildServer(config: Config, store: PositionStore): FastifyInstan
     }
 
     if (config.basicAuthUser && config.basicAuthPassword) {
-      const authHeader = request.headers.authorization;
-      if (!isAuthorized(authHeader, config.basicAuthUser, config.basicAuthPassword)) {
-        request.log.warn('rejected push with missing or invalid Basic Auth');
+      const auth = checkAuth(request.headers.authorization, config.basicAuthUser, config.basicAuthPassword);
+      if (!auth.ok) {
+        request.log.warn(
+          { ip: request.ip, sentUser: auth.sentUser, reason: auth.reason },
+          'rejected push: Basic Auth failed',
+        );
         return reply
           .code(401)
           .header('www-authenticate', 'Basic realm="krone-interface"')
