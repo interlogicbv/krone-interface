@@ -51,6 +51,19 @@ npm start
 - [src/types/krone.ts](src/types/krone.ts) — TypeScript-types van het Krone-payload (Swagger v1.8.1 + Boxdata Fields v1.8.1)
 - [sample/example-request.json](sample/example-request.json) — voorbeeld-push zoals Krone die stuurt
 
+## Draaien als service (Ubuntu/systemd)
+
+Zie [deploy/krone-interface.service](deploy/krone-interface.service). Pas daarin `User` en `WorkingDirectory` aan naar jouw situatie en installeer:
+
+```bash
+sudo cp deploy/krone-interface.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now krone-interface
+journalctl -u krone-interface -f   # live meekijken met de logs
+```
+
+De service start automatisch bij boot en herstart bij een crash. Na een `git pull`: `npm ci && npm run build && sudo systemctl restart krone-interface`.
+
 ## Endpoints
 
 - `POST /krone/push` — ontvangt Krone-pushes; logt per push een samenvatting (voertuig, lat/lon, adres, snelheid, richting, GPS-tijd)

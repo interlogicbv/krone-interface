@@ -1,0 +1,33 @@
+# systemd-unit voor de KRONE push-ontvanger.
+#
+# Installatie (pas eerst User en de paden hieronder aan):
+#   sudo cp deploy/krone-interface.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now krone-interface
+#
+# Logs bekijken:  journalctl -u krone-interface -f
+# Herstarten:     sudo systemctl restart krone-interface
+
+[Unit]
+Description=KRONE Telematics push receiver
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# De Linux-gebruiker waaronder de service draait
+User=ubuntu
+# Map waar de repo gecloned is; de .env wordt hieruit geladen
+WorkingDirectory=/home/ubuntu/krone-interface
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
