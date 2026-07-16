@@ -41,6 +41,10 @@ npm start
 | `REPORT_CRON` | *(uit)* | Cron-expressie voor het dagelijkse rapport, bijv. `0 7 * * *` = elke dag 07:00 |
 | `TIMEZONE` | `Europe/Amsterdam` | Tijdzone voor het schema en de tijden in de mail |
 | `STALE_AFTER_HOURS` | `24` | Na zoveel uur zonder update wordt de trailer met een ⚠️ gemeld |
+| `ETA_VEHICLE` | *(uit)* | Trailer voor de ETA-mail (kenteken, VH_ID, asset-naam of box-ID) |
+| `ETA_DESTINATION_ADDRESS` | *(uit)* | Bestemmingsadres voor de ETA-berekening |
+| `ETA_DESTINATION_LAT` / `ETA_DESTINATION_LON` | *(uit)* | Optionele vaste bestemmings-coördinaten (slaat geocoding over) |
+| `ETA_CRON` | *(uit)* | Cron-expressie voor de ETA-mail, bijv. `0 6 * * *` = elke dag 06:00 |
 | `SMTP_HOST` … `SMTP_PASSWORD` | *(uit)* | SMTP-server voor het versturen; zonder `SMTP_HOST` wordt het rapport naar de console geprint (dry-run) |
 | `MAIL_FROM` / `MAIL_TO` | *(uit)* | Afzender en ontvanger van het rapport |
 | `DATA_DIR` | `data` | Map voor de opslag van laatst bekende posities |
@@ -87,3 +91,13 @@ npm run report
 ```
 
 Zonder SMTP-configuratie wordt de mail naar de console geprint in plaats van verstuurd (handig om de inhoud te controleren).
+
+## ETA-mail
+
+Op het tijdstip uit `ETA_CRON` wordt de rijtijd van de laatst bekende positie van `ETA_VEHICLE` naar `ETA_DESTINATION_ADDRESS` berekend (routering via de publieke OSRM-server, geocoding via Nominatim) en per mail verstuurd: resterende afstand, rijtijd, verwachte aankomsttijd en een Google Maps-routelink. Handmatig versturen:
+
+```bash
+npm run eta
+```
+
+De rijtijd is indicatief (standaard rijprofiel, exclusief rusttijden en laden/lossen).
