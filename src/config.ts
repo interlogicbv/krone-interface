@@ -28,6 +28,27 @@ export interface Config {
    * header.
    */
   trustProxy: boolean;
+
+  /** Directory for the JSON position store. */
+  dataDir: string;
+  /** Vehicle to report on (license plate, VH_ID, asset name or box ID). Empty = all vehicles. */
+  trackedVehicle: string | undefined;
+  /** Cron expression for the daily report, e.g. "0 7 * * *" (07:00). Empty = no schedule. */
+  reportCron: string | undefined;
+  /** IANA timezone for the schedule and formatted times in the email. */
+  timezone: string;
+  /** After how many hours without an update a vehicle counts as stale (warning in the email). */
+  staleAfterHours: number;
+
+  /** SMTP settings; without smtpHost the report is printed to the console (dry-run). */
+  smtpHost: string | undefined;
+  smtpPort: number;
+  smtpSecure: boolean;
+  smtpUser: string | undefined;
+  smtpPassword: string | undefined;
+  mailFrom: string | undefined;
+  /** Recipient of the report email. */
+  mailTo: string | undefined;
 }
 
 /** Official source IPs of the Krone Push Default Service (per Swagger spec v1.8.1). */
@@ -47,5 +68,19 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     basicAuthPassword: env.BASIC_AUTH_PASSWORD,
     enforceIpAllowlist: env.ENFORCE_IP_ALLOWLIST === 'true',
     trustProxy: env.TRUST_PROXY === 'true',
+
+    dataDir: env.DATA_DIR ?? 'data',
+    trackedVehicle: env.TRACKED_VEHICLE,
+    reportCron: env.REPORT_CRON,
+    timezone: env.TIMEZONE ?? 'Europe/Amsterdam',
+    staleAfterHours: Number(env.STALE_AFTER_HOURS ?? 24),
+
+    smtpHost: env.SMTP_HOST,
+    smtpPort: Number(env.SMTP_PORT ?? 587),
+    smtpSecure: env.SMTP_SECURE === 'true',
+    smtpUser: env.SMTP_USER,
+    smtpPassword: env.SMTP_PASSWORD,
+    mailFrom: env.MAIL_FROM,
+    mailTo: env.MAIL_TO,
   };
 }

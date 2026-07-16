@@ -37,6 +37,13 @@ npm start
 | `BASIC_AUTH_PASSWORD` | *(uit)* | Verwacht wachtwoord. Krone stuurt het in het portaal geconfigureerde wachtwoord als SHA-256-hash; zowel de ruwe waarde als de hash worden geaccepteerd |
 | `ENFORCE_IP_ALLOWLIST` | `false` | Bij `true` worden alleen requests van de officiële Krone push-IP's (`85.236.61.180`, `85.236.61.181`) geaccepteerd |
 | `TRUST_PROXY` | `false` | Alleen op `true` bij een reverse proxy ervoor (client-IP uit `X-Forwarded-For`). Bij directe exposure uit laten, anders is de IP-allowlist te spoofen |
+| `TRACKED_VEHICLE` | *(alle)* | Trailer voor het rapport (kenteken, VH_ID, asset-naam of box-ID) |
+| `REPORT_CRON` | *(uit)* | Cron-expressie voor het dagelijkse rapport, bijv. `0 7 * * *` = elke dag 07:00 |
+| `TIMEZONE` | `Europe/Amsterdam` | Tijdzone voor het schema en de tijden in de mail |
+| `STALE_AFTER_HOURS` | `24` | Na zoveel uur zonder update wordt de trailer met een ⚠️ gemeld |
+| `SMTP_HOST` … `SMTP_PASSWORD` | *(uit)* | SMTP-server voor het versturen; zonder `SMTP_HOST` wordt het rapport naar de console geprint (dry-run) |
+| `MAIL_FROM` / `MAIL_TO` | *(uit)* | Afzender en ontvanger van het rapport |
+| `DATA_DIR` | `data` | Map voor de opslag van laatst bekende posities |
 
 ## Contract met Krone
 
@@ -67,5 +74,16 @@ De service start automatisch bij boot en herstart bij een crash. Na een `git pul
 
 ## Endpoints
 
-- `POST /krone/push` — ontvangt Krone-pushes; logt per push een samenvatting (voertuig, lat/lon, adres, snelheid, richting, GPS-tijd)
+- `POST /krone/push` — ontvangt Krone-pushes; logt per push een samenvatting (voertuig, lat/lon, adres, snelheid, richting, GPS-tijd) en slaat de laatste positie per trailer op
+- `GET /positions` — laatst bekende positie per trailer (JSON)
 - `GET /health` — healthcheck
+
+## Dagelijks e-mailrapport
+
+De server stuurt op het tijdstip uit `REPORT_CRON` een e-mail naar `MAIL_TO` met de laatst bekende positie van de gevolgde trailer (`TRACKED_VEHICLE`, of alle trailers als die leeg is), inclusief Google Maps-link. Is de laatste update ouder dan `STALE_AFTER_HOURS` uur, dan krijgt de mail een ⚠️-waarschuwing in het onderwerp. Handmatig testen kan altijd met:
+
+```bash
+npm run report
+```
+
+Zonder SMTP-configuratie wordt de mail naar de console geprint in plaats van verstuurd (handig om de inhoud te controleren).

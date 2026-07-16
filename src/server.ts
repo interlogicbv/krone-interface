@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { KRONE_PUSH_IPS, type Config } from './config.js';
+import type { PositionStore } from './store.js';
 import type {
   KroneErrorResponse,
   KronePushRequest,
@@ -61,7 +62,7 @@ function extractGeoSummary(push: KronePushRequest) {
   };
 }
 
-export function buildServer(config: Config): FastifyInstance {
+export function buildServer(config: Config, store: PositionStore): FastifyInstance {
   const app = Fastify({
     logger: process.stdout.isTTY
       ? {
@@ -114,10 +115,14 @@ export function buildServer(config: Config): FastifyInstance {
     }
 
     request.log.info(extractGeoSummary(push), 'trailer position received');
+    store.record(push);
 
     const body: KroneSuccessResponse = { id: push.id, received, status: 'OK' };
     return reply.code(201).send(body);
   });
+
+  // Read-only overview of the last known position per trailer.
+  app.get('/positions', async () => store.all());
 
   return app;
 }
