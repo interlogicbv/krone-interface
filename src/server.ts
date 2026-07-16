@@ -71,7 +71,7 @@ export function buildServer(config: Config): FastifyInstance {
           },
         }
       : true,
-    trustProxy: true,
+    trustProxy: config.trustProxy,
   });
 
   app.get('/health', async () => ({ status: 'ok' }));

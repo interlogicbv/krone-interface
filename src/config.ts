@@ -21,6 +21,13 @@ export interface Config {
    * does not forward the client IP.
    */
   enforceIpAllowlist: boolean;
+  /**
+   * Only enable when running behind a reverse proxy (nginx/Caddy): the client
+   * IP is then taken from X-Forwarded-For. With the server directly exposed
+   * this MUST stay off, otherwise the IP allowlist can be spoofed via that
+   * header.
+   */
+  trustProxy: boolean;
 }
 
 /** Official source IPs of the Krone Push Default Service (per Swagger spec v1.8.1). */
@@ -39,5 +46,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     basicAuthUser: env.BASIC_AUTH_USER,
     basicAuthPassword: env.BASIC_AUTH_PASSWORD,
     enforceIpAllowlist: env.ENFORCE_IP_ALLOWLIST === 'true',
+    trustProxy: env.TRUST_PROXY === 'true',
   };
 }
