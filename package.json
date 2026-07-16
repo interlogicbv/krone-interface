@@ -12,6 +12,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "report": "node dist/send-report.js",
+    "eta": "node dist/send-eta.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

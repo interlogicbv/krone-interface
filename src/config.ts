@@ -40,6 +40,16 @@ export interface Config {
   /** After how many hours without an update a vehicle counts as stale (warning in the email). */
   staleAfterHours: number;
 
+  /** Trailer for the ETA mail (license plate, VH_ID, asset name or box ID). */
+  etaVehicle: string | undefined;
+  /** Destination address for the ETA calculation. */
+  etaDestinationAddress: string | undefined;
+  /** Optional fixed destination coordinates; skips geocoding when set. */
+  etaDestinationLat: number | undefined;
+  etaDestinationLon: number | undefined;
+  /** Cron expression for the ETA mail, e.g. "0 6 * * *" (06:00). Empty = no schedule. */
+  etaCron: string | undefined;
+
   /** SMTP settings; without smtpHost the report is printed to the console (dry-run). */
   smtpHost: string | undefined;
   smtpPort: number;
@@ -77,6 +87,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     reportCron: env.REPORT_CRON,
     timezone: env.TIMEZONE ?? 'Europe/Amsterdam',
     staleAfterHours: Number(env.STALE_AFTER_HOURS ?? 24),
+
+    etaVehicle: env.ETA_VEHICLE,
+    etaDestinationAddress: env.ETA_DESTINATION_ADDRESS,
+    etaDestinationLat: env.ETA_DESTINATION_LAT ? Number(env.ETA_DESTINATION_LAT) : undefined,
+    etaDestinationLon: env.ETA_DESTINATION_LON ? Number(env.ETA_DESTINATION_LON) : undefined,
+    etaCron: env.ETA_CRON,
 
     smtpHost: env.SMTP_HOST,
     smtpPort: Number(env.SMTP_PORT ?? 587),
