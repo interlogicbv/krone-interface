@@ -3,8 +3,12 @@ import type { Config } from './config.js';
 import type { LastPosition, PositionStore } from './store.js';
 
 function formatTime(iso: string | undefined, timezone: string): string {
-  if (!iso) return 'onbekend';
-  return new Date(iso).toLocaleString('nl-NL', { timeZone: timezone, dateStyle: 'short', timeStyle: 'short' });
+  if (!iso) return '-';
+  return new Date(iso).toLocaleString('en-GB', {
+    timeZone: timezone,
+    dateStyle: 'short',
+    timeStyle: 'short',
+  });
 }
 
 function mapsLink(p: LastPosition): string | undefined {
@@ -12,10 +16,44 @@ function mapsLink(p: LastPosition): string | undefined {
   return `https://www.google.com/maps?q=${p.latitude},${p.longitude}`;
 }
 
+function displayName(p: LastPosition): string {
+  return p.assetName ?? p.license ?? p.vehicleKey;
+}
+
 interface ReportContent {
   subject: string;
   text: string;
   html: string;
+}
+
+/** Wraps body rows in the Interlogic house-style mail layout. */
+function renderMail(title: string, bodyHtml: string): string {
+  return `
+    <div style="margin:0; padding:0; background-color:#ffffff;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:800px; margin:0 auto; border:1px solid #e0e0e0; border-top:5px solid #00b0bd; font-family:'Segoe UI', Arial, sans-serif;">
+
+        <!-- HEADER -->
+        <tr>
+          <td style="padding:15px; background-color:#f8f9fa;">
+            <img src="https://www.inter-logic.eu/wp-content/uploads/2023/10/Logo-Interlogic.png" width="120">
+            <h1 style="margin:10px 0 0 0; font-size:20px; color:#001a2d;">
+              ${title}
+            </h1>
+          </td>
+        </tr>
+
+        ${bodyHtml}
+
+        <!-- FOOTER -->
+        <tr>
+          <td style="padding:12px; background:#f1f1f1; text-align:center; font-size:11px; color:#999;">
+            This is an automated message.
+          </td>
+        </tr>
+
+      </table>
+    </div>
+  `;
 }
 
 /** Builds the report email for one or more vehicles. */
@@ -28,60 +66,125 @@ export function buildReport(config: Config, store: PositionStore): ReportContent
   const staleMs = config.staleAfterHours * 60 * 60 * 1000;
 
   if (positions.length === 0) {
-    const who = config.trackedVehicle ? `trailer "${config.trackedVehicle}"` : 'nog geen enkele trailer';
-    const text = `Er is nog geen locatie-update ontvangen voor ${who}.\n\nControleer of de sharing in het Krone DataCenter actief is en of de service draait.`;
+    const who = config.trackedVehicle
+      ? `trailer "${config.trackedVehicle}"`
+      : 'any trailer';
+    const text = [
+      `No location update has been received yet for ${who}.`,
+      '',
+      'Please check whether the sharing in the KRONE DataCenter is active and the receiver service is running.',
+    ].join('\n');
+    const html = `
+        <!-- INTRO -->
+        <tr>
+          <td style="padding:15px; font-size:13px; color:#333;">
+            <p>No location update has been received yet for <b>${who}</b>.</p>
+            <p>Please check whether the sharing in the KRONE DataCenter is active and the receiver service is running.</p>
+          </td>
+        </tr>
+    `;
     return {
-      subject: `⚠️ Trailer-check: nog geen locatiedata ontvangen`,
+      subject: '⚠️ Trailer check: no location data received',
       text,
-      html: `<p>${text.replaceAll('\n', '<br>')}</p>`,
+      html: renderMail('Trailer Position Report', html),
     };
   }
 
-  const staleVehicles = positions.filter((p) => now - Date.parse(p.receivedAt) > staleMs);
-  const textBlocks: string[] = [];
-  const htmlBlocks: string[] = [];
+  const isStale = (p: LastPosition) => now - Date.parse(p.receivedAt) > staleMs;
+  const staleVehicles = positions.filter(isStale);
 
-  for (const p of positions) {
-    const name = p.assetName ?? p.license ?? p.vehicleKey;
-    const isStale = now - Date.parse(p.receivedAt) > staleMs;
+  const detailRows = positions
+    .map((p) => {
+      const stale = isStale(p);
+      const link = mapsLink(p);
+      const status = p.isMoving ? `Moving (${p.speedKmh ?? '?'} km/h)` : 'Parked';
+      const updateCell = stale
+        ? `<span style="color:#c0392b; font-weight:bold;">&#9888; ${formatTime(p.receivedAt, tz)}</span>`
+        : formatTime(p.receivedAt, tz);
+      return `
+      <tr>
+        <td style="padding:8px; border-bottom:1px solid #eee;">
+          ${displayName(p)}${p.license && p.license !== displayName(p) ? `<br><span style="color:#999; font-size:11px;">${p.license}</span>` : ''}
+        </td>
+        <td style="padding:8px; border-bottom:1px solid #eee;">
+          ${updateCell}
+        </td>
+        <td style="padding:8px; border-bottom:1px solid #eee;">
+          ${p.address ?? '-'}
+          ${p.latitude !== undefined ? `<br><span style="color:#999; font-size:11px;">${p.latitude}, ${p.longitude}</span>` : ''}
+        </td>
+        <td style="padding:8px; border-bottom:1px solid #eee;">
+          ${status}
+        </td>
+        <td style="padding:8px; border-bottom:1px solid #eee;">
+          ${link ? `<a href="${link}" style="font-weight:bold; color: #00b0bd">View map</a>` : '-'}
+        </td>
+      </tr>
+    `;
+    })
+    .join('');
+
+  const staleWarning =
+    staleVehicles.length > 0
+      ? `<p style="color:#c0392b;"><b>Please note:</b> ${staleVehicles
+          .map(displayName)
+          .join(', ')} ${staleVehicles.length === 1 ? 'has' : 'have'} not sent an update in the last ${config.staleAfterHours} hours.</p>`
+      : '';
+
+  const bodyHtml = `
+        <!-- INTRO -->
+        <tr>
+          <td style="padding:15px; font-size:13px; color:#333;">
+            <p>Please find below the most recent known position${positions.length === 1 ? '' : 's'} of your trailer${positions.length === 1 ? '' : 's'}, as received from KRONE Telematics.</p>
+            ${staleWarning}
+          </td>
+        </tr>
+
+        <!-- DETAILS TABLE -->
+        <tr>
+          <td style="padding:15px;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; font-size:13px;">
+              <tr>
+                <th style="text-align:left; padding:8px; border-bottom:2px solid #ddd;">Trailer</th>
+                <th style="text-align:left; padding:8px; border-bottom:2px solid #ddd;">Last update</th>
+                <th style="text-align:left; padding:8px; border-bottom:2px solid #ddd;">Location</th>
+                <th style="text-align:left; padding:8px; border-bottom:2px solid #ddd;">Status</th>
+                <th style="text-align:left; padding:8px; border-bottom:2px solid #ddd;">Map</th>
+              </tr>
+
+              ${detailRows}
+
+            </table>
+          </td>
+        </tr>
+  `;
+
+  const textBlocks = positions.map((p) => {
     const link = mapsLink(p);
-    const lines = [
-      `Trailer: ${name}${p.license && p.license !== name ? ` (${p.license})` : ''}`,
-      `Laatste update ontvangen: ${formatTime(p.receivedAt, tz)}${isStale ? ` — LET OP: langer dan ${config.staleAfterHours} uur geleden!` : ''}`,
-      `GPS-tijd: ${formatTime(p.gpsTime, tz)}`,
-      `Locatie: ${p.address ?? 'onbekend'}`,
-      `Coördinaten: ${p.latitude ?? '?'}, ${p.longitude ?? '?'}`,
-      `Status: ${p.isMoving ? `rijdend (${p.speedKmh ?? '?'} km/u)` : 'stilstaand'}`,
-      `Aantal ontvangen updates: ${p.pushCount}`,
-      ...(link ? [`Kaart: ${link}`] : []),
-    ];
-    textBlocks.push(lines.join('\n'));
-    htmlBlocks.push(
-      `<h3 style="margin-bottom:4px">${name}</h3><table cellpadding="2">` +
-        `<tr><td><b>Laatste update</b></td><td>${formatTime(p.receivedAt, tz)}${isStale ? ' ⚠️' : ''}</td></tr>` +
-        `<tr><td><b>GPS-tijd</b></td><td>${formatTime(p.gpsTime, tz)}</td></tr>` +
-        `<tr><td><b>Locatie</b></td><td>${p.address ?? 'onbekend'}</td></tr>` +
-        `<tr><td><b>Coördinaten</b></td><td>${p.latitude ?? '?'}, ${p.longitude ?? '?'}</td></tr>` +
-        `<tr><td><b>Status</b></td><td>${p.isMoving ? `rijdend (${p.speedKmh ?? '?'} km/u)` : 'stilstaand'}</td></tr>` +
-        `<tr><td><b>Updates</b></td><td>${p.pushCount}</td></tr>` +
-        (link ? `<tr><td><b>Kaart</b></td><td><a href="${link}">Open in Google Maps</a></td></tr>` : '') +
-        `</table>`,
-    );
-  }
+    return [
+      `Trailer: ${displayName(p)}${p.license && p.license !== displayName(p) ? ` (${p.license})` : ''}`,
+      `Last update: ${formatTime(p.receivedAt, tz)}${isStale(p) ? ` — WARNING: more than ${config.staleAfterHours} hours ago!` : ''}`,
+      `GPS time: ${formatTime(p.gpsTime, tz)}`,
+      `Location: ${p.address ?? '-'}`,
+      `Coordinates: ${p.latitude ?? '?'}, ${p.longitude ?? '?'}`,
+      `Status: ${p.isMoving ? `moving (${p.speedKmh ?? '?'} km/h)` : 'parked'}`,
+      `Updates received: ${p.pushCount}`,
+      ...(link ? [`Map: ${link}`] : []),
+    ].join('\n');
+  });
 
   const first = positions[0]!;
-  const firstName = first.assetName ?? first.license ?? first.vehicleKey;
   const subject =
     staleVehicles.length > 0
-      ? `⚠️ Trailer-check: geen recente update van ${staleVehicles.map((p) => p.assetName ?? p.license ?? p.vehicleKey).join(', ')}`
+      ? `⚠️ Trailer check: no recent update from ${staleVehicles.map(displayName).join(', ')}`
       : positions.length === 1
-        ? `Trailer-check ${firstName}: ${first.address ?? 'positie ontvangen'}`
-        : `Trailer-check: ${positions.length} trailers, laatste posities`;
+        ? `Trailer check ${displayName(first)}: ${first.address ?? 'position received'}`
+        : `Trailer check: last positions of ${positions.length} trailers`;
 
   return {
     subject,
     text: textBlocks.join('\n\n---\n\n'),
-    html: htmlBlocks.join('<hr>'),
+    html: renderMail('Trailer Position Report', bodyHtml),
   };
 }
 
@@ -93,11 +196,11 @@ export async function sendReport(config: Config, store: PositionStore): Promise<
   const report = buildReport(config, store);
 
   if (!config.smtpHost || !config.mailTo) {
-    console.log('--- E-mail (dry-run, geen SMTP geconfigureerd) ---');
-    console.log(`Aan: ${config.mailTo ?? '(MAIL_TO niet gezet)'}`);
-    console.log(`Onderwerp: ${report.subject}`);
+    console.log('--- E-mail (dry-run, no SMTP configured) ---');
+    console.log(`To: ${config.mailTo ?? '(MAIL_TO not set)'}`);
+    console.log(`Subject: ${report.subject}`);
     console.log(report.text);
-    console.log('--------------------------------------------------');
+    console.log('--------------------------------------------');
     return report;
   }
 
