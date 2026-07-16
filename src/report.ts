@@ -58,17 +58,25 @@ function renderMail(title: string, bodyHtml: string): string {
 
 /** Builds the report email for one or more vehicles. */
 export function buildReport(config: Config, store: PositionStore): ReportContent {
-  const positions = config.trackedVehicle
-    ? [store.find(config.trackedVehicle)].filter((p): p is LastPosition => p !== undefined)
-    : store.all();
+  const positions =
+    config.trackedVehicles.length > 0
+      ? config.trackedVehicles
+          .map((v) => store.find(v))
+          .filter((p): p is LastPosition => p !== undefined)
+      : store.all();
+  const missing =
+    config.trackedVehicles.length > 0
+      ? config.trackedVehicles.filter((v) => store.find(v) === undefined)
+      : [];
   const tz = config.timezone;
   const now = Date.now();
   const staleMs = config.staleAfterHours * 60 * 60 * 1000;
 
   if (positions.length === 0) {
-    const who = config.trackedVehicle
-      ? `trailer "${config.trackedVehicle}"`
-      : 'any trailer';
+    const who =
+      config.trackedVehicles.length > 0
+        ? `trailer${config.trackedVehicles.length === 1 ? '' : 's'} ${config.trackedVehicles.map((v) => `"${v}"`).join(', ')}`
+        : 'any trailer';
     const text = [
       `No location update has been received yet for ${who}.`,
       '',
@@ -131,12 +139,18 @@ export function buildReport(config: Config, store: PositionStore): ReportContent
           .join(', ')} ${staleVehicles.length === 1 ? 'has' : 'have'} not sent an update in the last ${config.staleAfterHours} hours.</p>`
       : '';
 
+  const missingWarning =
+    missing.length > 0
+      ? `<p style="color:#c0392b;"><b>Please note:</b> no location data has been received yet for ${missing.map((v) => `"${v}"`).join(', ')}.</p>`
+      : '';
+
   const bodyHtml = `
         <!-- INTRO -->
         <tr>
           <td style="padding:15px; font-size:13px; color:#333;">
             <p>Please find below the most recent known position${positions.length === 1 ? '' : 's'} of your trailer${positions.length === 1 ? '' : 's'}, as received from KRONE Telematics.</p>
             ${staleWarning}
+            ${missingWarning}
           </td>
         </tr>
 
@@ -174,12 +188,19 @@ export function buildReport(config: Config, store: PositionStore): ReportContent
   });
 
   const first = positions[0]!;
+  const attention = [...staleVehicles.map(displayName), ...missing];
   const subject =
-    staleVehicles.length > 0
-      ? `⚠️ Trailer check: no recent update from ${staleVehicles.map(displayName).join(', ')}`
+    attention.length > 0
+      ? `⚠️ Trailer check: no recent update from ${attention.join(', ')}`
       : positions.length === 1
         ? `Trailer check ${displayName(first)}: ${first.address ?? 'position received'}`
         : `Trailer check: last positions of ${positions.length} trailers`;
+
+  if (missing.length > 0) {
+    textBlocks.push(
+      `WARNING: no location data has been received yet for ${missing.map((v) => `"${v}"`).join(', ')}.`,
+    );
+  }
 
   return {
     subject,

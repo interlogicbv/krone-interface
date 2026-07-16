@@ -31,8 +31,8 @@ export interface Config {
 
   /** Directory for the JSON position store. */
   dataDir: string;
-  /** Vehicle to report on (license plate, VH_ID, asset name or box ID). Empty = all vehicles. */
-  trackedVehicle: string | undefined;
+  /** Vehicles to report on (license plate, VH_ID, asset name or box ID). Empty = all vehicles. */
+  trackedVehicles: string[];
   /** Cron expression for the daily report, e.g. "0 7 * * *" (07:00). Empty = no schedule. */
   reportCron: string | undefined;
   /** IANA timezone for the schedule and formatted times in the email. */
@@ -70,7 +70,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     trustProxy: env.TRUST_PROXY === 'true',
 
     dataDir: env.DATA_DIR ?? 'data',
-    trackedVehicle: env.TRACKED_VEHICLE,
+    trackedVehicles: (env.TRACKED_VEHICLES ?? env.TRACKED_VEHICLE ?? '')
+      .split(',')
+      .map((v) => v.trim())
+      .filter((v) => v.length > 0),
     reportCron: env.REPORT_CRON,
     timezone: env.TIMEZONE ?? 'Europe/Amsterdam',
     staleAfterHours: Number(env.STALE_AFTER_HOURS ?? 24),

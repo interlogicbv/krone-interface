@@ -37,7 +37,7 @@ npm start
 | `BASIC_AUTH_PASSWORD` | *(uit)* | Verwacht wachtwoord. Krone stuurt het in het portaal geconfigureerde wachtwoord als SHA-256-hash; zowel de ruwe waarde als de hash worden geaccepteerd |
 | `ENFORCE_IP_ALLOWLIST` | `false` | Bij `true` worden alleen requests van de officiële Krone push-IP's (`85.236.61.180`, `85.236.61.181`) geaccepteerd |
 | `TRUST_PROXY` | `false` | Alleen op `true` bij een reverse proxy ervoor (client-IP uit `X-Forwarded-For`). Bij directe exposure uit laten, anders is de IP-allowlist te spoofen |
-| `TRACKED_VEHICLE` | *(alle)* | Trailer voor het rapport (kenteken, VH_ID, asset-naam of box-ID) |
+| `TRACKED_VEHICLES` | *(alle)* | Trailers voor het rapport (kenteken, VH_ID, asset-naam of box-ID), kommagescheiden. `TRACKED_VEHICLE` (enkelvoud) werkt ook nog |
 | `REPORT_CRON` | *(uit)* | Cron-expressie voor het dagelijkse rapport, bijv. `0 7 * * *` = elke dag 07:00 |
 | `TIMEZONE` | `Europe/Amsterdam` | Tijdzone voor het schema en de tijden in de mail |
 | `STALE_AFTER_HOURS` | `24` | Na zoveel uur zonder update wordt de trailer met een ⚠️ gemeld |
@@ -80,7 +80,7 @@ De service start automatisch bij boot en herstart bij een crash. Na een `git pul
 
 ## Dagelijks e-mailrapport
 
-De server stuurt op het tijdstip uit `REPORT_CRON` een e-mail naar `MAIL_TO` met de laatst bekende positie van de gevolgde trailer (`TRACKED_VEHICLE`, of alle trailers als die leeg is), inclusief Google Maps-link. Is de laatste update ouder dan `STALE_AFTER_HOURS` uur, dan krijgt de mail een ⚠️-waarschuwing in het onderwerp. Handmatig testen kan altijd met:
+De server stuurt op het tijdstip uit `REPORT_CRON` een e-mail naar `MAIL_TO` met de laatst bekende positie van de gevolgde trailers (`TRACKED_VEHICLES`, of alle trailers als die leeg is), inclusief Google Maps-link. Is de laatste update ouder dan `STALE_AFTER_HOURS` uur, dan krijgt de mail een ⚠️-waarschuwing in het onderwerp. Handmatig testen kan altijd met:
 
 ```bash
 npm run report
