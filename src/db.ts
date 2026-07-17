@@ -23,6 +23,15 @@ function pick(row: Record<string, unknown>, ...names: string[]): unknown {
 }
 
 /**
+ * Coerces a coordinate that may arrive as number or string; 0 and invalid
+ * values count as absent (TMS addresses without geocoding store 0).
+ */
+function asCoordinate(value: unknown): number | undefined {
+  const n = typeof value === 'string' ? Number(value) : typeof value === 'number' ? value : NaN;
+  return Number.isFinite(n) && n !== 0 ? n : undefined;
+}
+
+/**
  * Runs the ETA query (from config.etaQueryFile) against the MSSQL database and
  * maps the rows to ETA targets.
  *
@@ -52,19 +61,23 @@ export async function fetchEtaTargets(config: Config): Promise<EtaTarget[]> {
   try {
     const result = await pool.request().query<Record<string, unknown>>(queryText);
     const targets: EtaTarget[] = [];
+    const seen = new Set<string>();
     for (const row of result.recordset) {
       const vehicle = pick(row, 'vehicle', 'trailer', 'license');
       const destination = pick(row, 'destination', 'destination_address', 'address');
       if (typeof vehicle !== 'string' || vehicle.trim() === '') continue;
       if (typeof destination !== 'string' || destination.trim() === '') continue;
-      const lat = pick(row, 'destination_lat', 'lat', 'latitude');
-      const lon = pick(row, 'destination_lon', 'lon', 'longitude');
+      const key = `${vehicle.trim().toLowerCase()}|${destination.trim().toLowerCase()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const lat = asCoordinate(pick(row, 'destination_lat', 'lat', 'latitude'));
+      const lon = asCoordinate(pick(row, 'destination_lon', 'lon', 'longitude'));
       const mailTo = pick(row, 'mail_to', 'email', 'recipient');
       targets.push({
         vehicle: vehicle.trim(),
         destinationAddress: destination.trim(),
-        ...(typeof lat === 'number' && { destinationLat: lat }),
-        ...(typeof lon === 'number' && { destinationLon: lon }),
+        // Only use fixed coordinates when both are present and valid.
+        ...(lat !== undefined && lon !== undefined && { destinationLat: lat, destinationLon: lon }),
         ...(typeof mailTo === 'string' && mailTo.trim() !== '' && { mailTo: mailTo.trim() }),
       });
     }

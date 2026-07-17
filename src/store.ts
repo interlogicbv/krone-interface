@@ -89,12 +89,18 @@ export class PositionStore {
     return [...this.positions.values()].sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
   }
 
-  /** Finds a vehicle by license plate, VH_ID, asset name or box ID (case-insensitive). */
+  /**
+   * Finds a vehicle by license plate, VH_ID, asset name or box ID.
+   * Matching is case-insensitive and ignores dashes/spaces, so the TMS
+   * notation "OT-84-LL" matches the Krone notation "OT84LL" and vice versa.
+   */
   find(identifier: string): LastPosition | undefined {
-    const needle = identifier.trim().toLowerCase();
+    const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const needle = normalize(identifier);
+    if (needle === '') return undefined;
     return this.all().find((p) =>
       [p.vehicleKey, p.license, p.assetName, p.boxId, p.chassis].some(
-        (v) => v?.toLowerCase() === needle,
+        (v) => v !== undefined && normalize(v) === needle,
       ),
     );
   }
