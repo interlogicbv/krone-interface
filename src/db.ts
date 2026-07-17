@@ -95,8 +95,8 @@ export async function fetchEtaTargets(config: Config): Promise<EtaTarget[]> {
     user: config.mssqlUser,
     password: config.mssqlPassword,
     options: {
-      encrypt: true, // required for Azure SQL
-      trustServerCertificate: false,
+      encrypt: config.mssqlEncrypt, // set MSSQL_ENCRYPT=true for Azure SQL
+      trustServerCertificate: !config.mssqlEncrypt,
     },
     pool: { max: 2, min: 0 },
     connectionTimeout: 15000,

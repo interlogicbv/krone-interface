@@ -55,6 +55,8 @@ export interface Config {
   mssqlDatabase: string | undefined;
   mssqlUser: string | undefined;
   mssqlPassword: string | undefined;
+  /** TLS-encrypted connection; required for Azure SQL, off for on-prem servers without SSL. */
+  mssqlEncrypt: boolean;
 
   /** SMTP settings; without smtpHost the report is printed to the console (dry-run). */
   smtpHost: string | undefined;
@@ -101,6 +103,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     mssqlDatabase: env.MSSQL_DATABASE,
     mssqlUser: env.MSSQL_USER,
     mssqlPassword: env.MSSQL_PASSWORD,
+    mssqlEncrypt: env.MSSQL_ENCRYPT === 'true',
 
     smtpHost: env.SMTP_HOST,
     smtpPort: Number(env.SMTP_PORT ?? 587),
