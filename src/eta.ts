@@ -115,34 +115,33 @@ function renderMail(bodyHtml: string): string {
   `;
 }
 
-/** PostNL/DHL-style progress tracker: On the way → Almost there → Arrived. */
+/**
+ * PostNL/DHL-style progress tracker: On the way → Almost there → Arrived.
+ * Built exclusively from table cells with background colors: Outlook renders
+ * mails with the Word engine and drops styled <div> elements entirely.
+ */
 function renderTracker(step: 0 | 1 | 2): string {
   const labels = ['On the way', 'Almost there', 'Arrived'];
-  const dot = (reached: boolean, current: boolean) =>
-    `<td align="center" width="20" style="padding:0;">
-      <div style="width:${current ? 20 : 14}px; height:${current ? 20 : 14}px; border-radius:50%; background-color:${reached ? TEAL : GREY}; ${current ? `border:3px solid #b3e6ea;` : ''}"></div>
-    </td>`;
-  const bar = (reached: boolean) =>
-    `<td style="padding:0;"><div style="height:4px; background-color:${reached ? TEAL : GREY};"></div></td>`;
+  const segment = (index: number) =>
+    `<td width="33%" height="10" bgcolor="${index <= step ? TEAL : GREY}" style="height:10px; background-color:${index <= step ? TEAL : GREY}; font-size:1px; line-height:1px;">&nbsp;</td>`;
+  const spacer = `<td width="6" style="font-size:1px; line-height:1px;">&nbsp;</td>`;
   const label = (index: number) =>
-    `<td align="center" width="33%" style="padding-top:6px; font-size:12px; color:${index <= step ? '#001a2d' : '#999'}; font-weight:${index === step ? 'bold' : 'normal'};">${labels[index]}</td>`;
+    `<td width="33%" align="center" style="padding-top:8px; font-size:12px; color:${index <= step ? '#001a2d' : '#999'}; font-weight:${index === step ? 'bold' : 'normal'};">${index < step ? '&#10003; ' : ''}${labels[index]}</td>`;
 
   return `
-    <table width="100%" cellpadding="0" cellspacing="0" style="margin:5px 0 0 0;">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
       <tr>
-        <td width="16%"></td>
-        ${dot(true, step === 0)}
-        ${bar(step >= 1)}
-        ${dot(step >= 1, step === 1)}
-        ${bar(step >= 2)}
-        ${dot(step >= 2, step === 2)}
-        <td width="16%"></td>
+        ${segment(0)}
+        ${spacer}
+        ${segment(1)}
+        ${spacer}
+        ${segment(2)}
       </tr>
-    </table>
-    <table width="100%" cellpadding="0" cellspacing="0">
       <tr>
         ${label(0)}
+        <td></td>
         ${label(1)}
+        <td></td>
         ${label(2)}
       </tr>
     </table>
