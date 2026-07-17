@@ -38,8 +38,10 @@ npm start
 | `ENFORCE_IP_ALLOWLIST` | `false` | Bij `true` worden alleen requests van de officiële Krone push-IP's (`85.236.61.180`, `85.236.61.181`) geaccepteerd |
 | `TRUST_PROXY` | `false` | Alleen op `true` bij een reverse proxy ervoor (client-IP uit `X-Forwarded-For`). Bij directe exposure uit laten, anders is de IP-allowlist te spoofen |
 | `TIMEZONE` | `Europe/Amsterdam` | Tijdzone voor het schema en de tijden in de mail |
-| `ETA_VEHICLE` | *(uit)* | Trailer voor de ETA-mail (kenteken, VH_ID, asset-naam of box-ID) |
-| `ETA_DESTINATION_ADDRESS` | *(uit)* | Bestemmingsadres voor de ETA-berekening |
+| `MSSQL_SERVER` … `MSSQL_PASSWORD` | *(uit)* | MSSQL-database voor dynamische trailer/bestemming-combinaties |
+| `ETA_QUERY_FILE` | `eta-query.sql` | SQL-bestand dat de ETA-targets selecteert (kolommen: `vehicle`, `destination`, optioneel `destination_lat`/`destination_lon`/`mail_to`) |
+| `ETA_VEHICLE` | *(uit)* | Fallback-trailer als er geen database is geconfigureerd |
+| `ETA_DESTINATION_ADDRESS` | *(uit)* | Fallback-bestemmingsadres |
 | `ETA_DESTINATION_LAT` / `ETA_DESTINATION_LON` | *(uit)* | Optionele vaste bestemmings-coördinaten (slaat geocoding over) |
 | `ETA_CRON` | *(uit)* | Cron-expressie (5 velden!) voor de ETA-mail, bijv. `0 6 * * 1-5` = werkdagen 06:00 |
 | `SMTP_HOST` … `SMTP_PASSWORD` | *(uit)* | SMTP-server voor het versturen; zonder `SMTP_HOST` wordt het rapport naar de console geprint (dry-run) |
@@ -81,7 +83,7 @@ De service start automatisch bij boot en herstart bij een crash. Na een `git pul
 
 ## ETA-mail
 
-Op het tijdstip uit `ETA_CRON` wordt de rijtijd van de laatst bekende positie van `ETA_VEHICLE` naar `ETA_DESTINATION_ADDRESS` berekend (routering via de publieke OSRM-server, geocoding via Nominatim) en als track & trace-achtige mail verstuurd, met een statusbalk in drie stappen:
+Op het tijdstip uit `ETA_CRON` worden de actuele trailer/bestemming-combinaties bepaald — uit de MSSQL-database via de query in `ETA_QUERY_FILE`, of anders de vaste `ETA_VEHICLE`/`ETA_DESTINATION_ADDRESS` uit de `.env`. Per combinatie wordt de rijtijd van de laatst bekende positie naar de bestemming berekend (routering via de publieke OSRM-server, geocoding via Nominatim) en als track & trace-achtige mail verstuurd, met een statusbalk in drie stappen:
 
 - **On the way** — onderweg, met resterende afstand, rijtijd en verwachte aankomsttijd
 - **Almost there** — minder dan een uur rijden van de bestemming

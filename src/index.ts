@@ -1,6 +1,6 @@
 import { Cron } from 'croner';
 import { loadConfig } from './config.js';
-import { sendEtaMail } from './eta.js';
+import { sendEtaMails } from './eta.js';
 import { buildServer } from './server.js';
 import { PositionStore } from './store.js';
 
@@ -20,22 +20,23 @@ try {
 }
 
 let etaJob: Cron | undefined;
-if (config.etaCron && config.etaVehicle && config.etaDestinationAddress) {
+if (config.etaCron) {
   etaJob = new Cron(config.etaCron, { timezone: config.timezone }, async () => {
     try {
-      const mail = await sendEtaMail(config, store);
-      app.log.info({ subject: mail.subject, mailTo: config.mailTo }, 'ETA mail sent');
+      const results = await sendEtaMails(config, store);
+      for (const r of results) {
+        if (r.error) {
+          app.log.error({ vehicle: r.target.vehicle, error: r.error }, 'ETA mail failed');
+        } else {
+          app.log.info({ vehicle: r.target.vehicle, subject: r.subject }, 'ETA mail sent');
+        }
+      }
     } catch (err) {
-      app.log.error(err, 'sending ETA mail failed');
+      app.log.error(err, 'sending ETA mails failed');
     }
   });
   app.log.info(
-    {
-      cron: config.etaCron,
-      vehicle: config.etaVehicle,
-      destination: config.etaDestinationAddress,
-      nextRun: etaJob.nextRun()?.toISOString(),
-    },
+    { cron: config.etaCron, nextRun: etaJob.nextRun()?.toISOString() },
     'ETA mail scheduled',
   );
 }

@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import type { Config } from './config.js';
+import { fetchEtaTargets, isDbConfigured, type EtaTarget } from './db.js';
 import type { PositionStore } from './store.js';
 
 const USER_AGENT = 'krone-interface (Interlogic trailer tracking)';
@@ -24,11 +25,12 @@ interface Route {
   distanceMeters: number;
 }
 
-let geocodeCache: { address: string; coords: Coordinates } | undefined;
+const geocodeCache = new Map<string, Coordinates>();
 
 /** Resolves an address to coordinates via Nominatim (cached per address). */
 async function geocode(address: string): Promise<Coordinates> {
-  if (geocodeCache?.address === address) return geocodeCache.coords;
+  const cached = geocodeCache.get(address);
+  if (cached) return cached;
   const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`;
   const response = await fetch(url, { headers: { 'user-agent': USER_AGENT } });
   if (!response.ok) throw new Error(`Nominatim returned HTTP ${response.status}`);
@@ -36,7 +38,7 @@ async function geocode(address: string): Promise<Coordinates> {
   const first = results[0];
   if (!first) throw new Error(`Address not found: ${address}`);
   const coords = { latitude: Number(first.lat), longitude: Number(first.lon) };
-  geocodeCache = { address, coords };
+  geocodeCache.set(address, coords);
   return coords;
 }
 
@@ -148,12 +150,13 @@ function renderTracker(step: 0 | 1 | 2): string {
   `;
 }
 
-export async function buildEtaMail(config: Config, store: PositionStore): Promise<EtaMailContent> {
-  const vehicleId = config.etaVehicle;
-  const destinationAddress = config.etaDestinationAddress;
-  if (!vehicleId || !destinationAddress) {
-    throw new Error('ETA_VEHICLE and ETA_DESTINATION_ADDRESS must be configured');
-  }
+export async function buildEtaMail(
+  config: Config,
+  store: PositionStore,
+  target: EtaTarget,
+): Promise<EtaMailContent> {
+  const vehicleId = target.vehicle;
+  const destinationAddress = target.destinationAddress;
   const tz = config.timezone;
   const destinationShort = destinationAddress.split(',')[0]!.trim();
   const position = store.find(vehicleId);
@@ -175,8 +178,8 @@ export async function buildEtaMail(config: Config, store: PositionStore): Promis
   }
 
   const destination =
-    config.etaDestinationLat !== undefined && config.etaDestinationLon !== undefined
-      ? { latitude: config.etaDestinationLat, longitude: config.etaDestinationLon }
+    target.destinationLat !== undefined && target.destinationLon !== undefined
+      ? { latitude: target.destinationLat, longitude: target.destinationLon }
       : await geocode(destinationAddress);
 
   const current: Coordinates = { latitude: position.latitude, longitude: position.longitude };
@@ -284,35 +287,80 @@ export async function buildEtaMail(config: Config, store: PositionStore): Promis
   return { subject, text, html: renderMail(bodyHtml) };
 }
 
-/** Sends the ETA mail; without SMTP configuration it is printed to the console (dry-run). */
-export async function sendEtaMail(config: Config, store: PositionStore): Promise<EtaMailContent> {
-  const mail = await buildEtaMail(config, store);
-
-  if (!config.smtpHost || !config.mailTo) {
-    console.log('--- E-mail (dry-run, no SMTP configured) ---');
-    console.log(`To: ${config.mailTo ?? '(MAIL_TO not set)'}`);
-    console.log(`Subject: ${mail.subject}`);
-    console.log(mail.text);
-    console.log('--------------------------------------------');
-    return mail;
+/**
+ * Resolves the trailer/destination combinations: from the MSSQL database when
+ * configured, otherwise the single ETA_* env fallback.
+ */
+async function resolveTargets(config: Config): Promise<EtaTarget[]> {
+  if (isDbConfigured(config)) return fetchEtaTargets(config);
+  if (config.etaVehicle && config.etaDestinationAddress) {
+    return [
+      {
+        vehicle: config.etaVehicle,
+        destinationAddress: config.etaDestinationAddress,
+        ...(config.etaDestinationLat !== undefined && { destinationLat: config.etaDestinationLat }),
+        ...(config.etaDestinationLon !== undefined && { destinationLon: config.etaDestinationLon }),
+      },
+    ];
   }
+  throw new Error(
+    'Configure either the MSSQL_* variables or ETA_VEHICLE and ETA_DESTINATION_ADDRESS',
+  );
+}
 
-  const transporter = nodemailer.createTransport({
-    host: config.smtpHost,
-    port: config.smtpPort,
-    secure: config.smtpSecure,
-    ...(config.smtpUser && config.smtpPassword
-      ? { auth: { user: config.smtpUser, pass: config.smtpPassword } }
-      : {}),
-  });
+export interface SentEtaMail {
+  target: EtaTarget;
+  subject: string;
+  error?: string;
+}
 
-  await transporter.sendMail({
-    from: config.mailFrom ?? config.smtpUser ?? config.mailTo,
-    to: config.mailTo,
-    subject: mail.subject,
-    text: mail.text,
-    html: mail.html,
-  });
+/**
+ * Sends one ETA mail per trailer/destination combination. Without SMTP
+ * configuration the mails are printed to the console instead (dry-run).
+ * A failure for one target does not stop the others.
+ */
+export async function sendEtaMails(config: Config, store: PositionStore): Promise<SentEtaMail[]> {
+  const targets = await resolveTargets(config);
+  const dryRun = !config.smtpHost || !config.mailTo;
+  const transporter = dryRun
+    ? undefined
+    : nodemailer.createTransport({
+        host: config.smtpHost,
+        port: config.smtpPort,
+        secure: config.smtpSecure,
+        ...(config.smtpUser && config.smtpPassword
+          ? { auth: { user: config.smtpUser, pass: config.smtpPassword } }
+          : {}),
+      });
 
-  return mail;
+  const results: SentEtaMail[] = [];
+  for (const target of targets) {
+    try {
+      const mail = await buildEtaMail(config, store, target);
+      const to = target.mailTo ?? config.mailTo;
+      if (!transporter || !to) {
+        console.log('--- E-mail (dry-run, no SMTP configured) ---');
+        console.log(`To: ${to ?? '(MAIL_TO not set)'}`);
+        console.log(`Subject: ${mail.subject}`);
+        console.log(mail.text);
+        console.log('--------------------------------------------');
+      } else {
+        await transporter.sendMail({
+          from: config.mailFrom ?? config.smtpUser ?? to,
+          to,
+          subject: mail.subject,
+          text: mail.text,
+          html: mail.html,
+        });
+      }
+      results.push({ target, subject: mail.subject });
+    } catch (err) {
+      results.push({
+        target,
+        subject: '(failed)',
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  return results;
 }

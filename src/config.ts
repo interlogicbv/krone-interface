@@ -34,15 +34,23 @@ export interface Config {
   /** IANA timezone for the schedule and formatted times in the email. */
   timezone: string;
 
-  /** Trailer for the ETA mail (license plate, VH_ID, asset name or box ID). */
+  /** Fallback trailer for the ETA mail when no database is configured. */
   etaVehicle: string | undefined;
-  /** Destination address for the ETA calculation. */
+  /** Fallback destination address when no database is configured. */
   etaDestinationAddress: string | undefined;
   /** Optional fixed destination coordinates; skips geocoding when set. */
   etaDestinationLat: number | undefined;
   etaDestinationLon: number | undefined;
-  /** Cron expression for the ETA mail, e.g. "0 6 * * *" (06:00). Empty = no schedule. */
+  /** Cron expression for the ETA mail, e.g. "0 6 * * 1-5" (weekdays 06:00). Empty = no schedule. */
   etaCron: string | undefined;
+  /** Path to the SQL file that selects the trailer/destination combinations. */
+  etaQueryFile: string;
+
+  /** MSSQL connection for dynamic ETA targets; leave unset to use the ETA_* fallback. */
+  mssqlServer: string | undefined;
+  mssqlDatabase: string | undefined;
+  mssqlUser: string | undefined;
+  mssqlPassword: string | undefined;
 
   /** SMTP settings; without smtpHost the report is printed to the console (dry-run). */
   smtpHost: string | undefined;
@@ -81,6 +89,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     etaDestinationLat: env.ETA_DESTINATION_LAT ? Number(env.ETA_DESTINATION_LAT) : undefined,
     etaDestinationLon: env.ETA_DESTINATION_LON ? Number(env.ETA_DESTINATION_LON) : undefined,
     etaCron: env.ETA_CRON,
+    etaQueryFile: env.ETA_QUERY_FILE ?? 'eta-query.sql',
+
+    mssqlServer: env.MSSQL_SERVER,
+    mssqlDatabase: env.MSSQL_DATABASE,
+    mssqlUser: env.MSSQL_USER,
+    mssqlPassword: env.MSSQL_PASSWORD,
 
     smtpHost: env.SMTP_HOST,
     smtpPort: Number(env.SMTP_PORT ?? 587),
