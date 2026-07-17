@@ -213,17 +213,26 @@ export async function buildEtaMail(
       ? `🚚 ${name} is almost there — arrival ${arrival}`
       : `🚚 ${name} is on its way — arrival ${arrival}`;
 
+  const planned = target.plannedAt;
+  const minutesLate = planned ? Math.round((eta.getTime() - planned.getTime()) / 60000) : 0;
+  const lateNote =
+    !arrived && planned && minutesLate > 15
+      ? `Currently expected about ${minutesLate} minutes later than the agreed time.`
+      : undefined;
+
   const rows: [string, string][] = arrived
     ? [
         ['Trailer', `${name}${position.license && position.license !== name ? ` (${position.license})` : ''}`],
         ['Location', position.address ?? `${position.latitude}, ${position.longitude}`],
         ['Destination', destinationAddress],
+        ...(planned ? [['Agreed time', formatTime(planned, tz)] as [string, string]] : []),
         ['Position received', formatTime(new Date(position.receivedAt), tz)],
       ]
     : [
         ['Trailer', `${name}${position.license && position.license !== name ? ` (${position.license})` : ''}`],
         ['Current location', position.address ?? `${position.latitude}, ${position.longitude}`],
         ['Destination', destinationAddress],
+        ...(planned ? [['Agreed time', formatTime(planned, tz)] as [string, string]] : []),
         ['Remaining distance', `${distanceKm} km`],
         ['Remaining driving time', formatDuration(route.durationSeconds)],
         ['Expected arrival', arrival],
@@ -246,6 +255,7 @@ export async function buildEtaMail(
           <td style="padding:20px 15px 5px 15px; text-align:center;">
             <h1 style="margin:0; font-size:24px; color:#001a2d;">${headline}</h1>
             <p style="margin:8px 0 0 0; font-size:14px; color:#333;">${subline}</p>
+            ${lateNote ? `<p style="margin:8px 0 0 0; font-size:13px; color:#c0392b;"><b>${lateNote}</b></p>` : ''}
           </td>
         </tr>
         <tr>
@@ -276,6 +286,7 @@ export async function buildEtaMail(
   const text = [
     headline,
     arrived ? `Your trailer is at ${destinationShort}.` : `Expected arrival: ${arrival}.`,
+    ...(lateNote ? [lateNote] : []),
     '',
     ...rows.map(([label, value]) => `${label}: ${value}`),
     '',
@@ -315,16 +326,25 @@ export interface SentEtaMail {
 }
 
 /**
- * Sends one ETA mail per trailer/destination combination. Without SMTP
- * configuration the mails are printed to the console instead (dry-run).
- * A failure for one target does not stop the others.
+ * Builds and sends the ETA mail for a single target. Without SMTP
+ * configuration the mail is printed to the console instead (dry-run).
  */
-export async function sendEtaMails(config: Config, store: PositionStore): Promise<SentEtaMail[]> {
-  const targets = await resolveTargets(config);
-  const dryRun = !config.smtpHost || !config.mailTo;
-  const transporter = dryRun
-    ? undefined
-    : nodemailer.createTransport({
+export async function sendOneEtaMail(
+  config: Config,
+  store: PositionStore,
+  target: EtaTarget,
+): Promise<SentEtaMail> {
+  try {
+    const mail = await buildEtaMail(config, store, target);
+    const to = target.mailTo ?? config.mailTo;
+    if (!config.smtpHost || !to) {
+      console.log('--- E-mail (dry-run, no SMTP configured) ---');
+      console.log(`To: ${to ?? '(MAIL_TO not set)'}`);
+      console.log(`Subject: ${mail.subject}`);
+      console.log(mail.text);
+      console.log('--------------------------------------------');
+    } else {
+      const transporter = nodemailer.createTransport({
         host: config.smtpHost,
         port: config.smtpPort,
         secure: config.smtpSecure,
@@ -332,37 +352,42 @@ export async function sendEtaMails(config: Config, store: PositionStore): Promis
           ? { auth: { user: config.smtpUser, pass: config.smtpPassword } }
           : {}),
       });
+      await transporter.sendMail({
+        from: config.mailFrom ?? config.smtpUser ?? to,
+        to,
+        subject: mail.subject,
+        text: mail.text,
+        html: mail.html,
+      });
+    }
+    return { target, subject: mail.subject };
+  } catch (err) {
+    return {
+      target,
+      subject: '(failed)',
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/**
+ * Sends one ETA mail per trailer/destination combination. With
+ * `excludePlanned` the trips that carry an agreed time are skipped —
+ * those are handled by the EtaPlanner at their own moment.
+ */
+export async function sendEtaMails(
+  config: Config,
+  store: PositionStore,
+  options: { excludePlanned?: boolean } = {},
+): Promise<SentEtaMail[]> {
+  let targets = await resolveTargets(config);
+  if (options.excludePlanned) targets = targets.filter((t) => t.plannedAt === undefined);
 
   const results: SentEtaMail[] = [];
   for (const [index, target] of targets.entries()) {
     // Pace requests to the public OSRM/Nominatim servers (~1 req/s policy).
     if (index > 0) await new Promise((resolve) => setTimeout(resolve, 1200));
-    try {
-      const mail = await buildEtaMail(config, store, target);
-      const to = target.mailTo ?? config.mailTo;
-      if (!transporter || !to) {
-        console.log('--- E-mail (dry-run, no SMTP configured) ---');
-        console.log(`To: ${to ?? '(MAIL_TO not set)'}`);
-        console.log(`Subject: ${mail.subject}`);
-        console.log(mail.text);
-        console.log('--------------------------------------------');
-      } else {
-        await transporter.sendMail({
-          from: config.mailFrom ?? config.smtpUser ?? to,
-          to,
-          subject: mail.subject,
-          text: mail.text,
-          html: mail.html,
-        });
-      }
-      results.push({ target, subject: mail.subject });
-    } catch (err) {
-      results.push({
-        target,
-        subject: '(failed)',
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
+    results.push(await sendOneEtaMail(config, store, target));
   }
   return results;
 }

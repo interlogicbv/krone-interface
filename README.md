@@ -43,7 +43,8 @@ npm start
 | `ETA_VEHICLE` | *(uit)* | Fallback-trailer als er geen database is geconfigureerd |
 | `ETA_DESTINATION_ADDRESS` | *(uit)* | Fallback-bestemmingsadres |
 | `ETA_DESTINATION_LAT` / `ETA_DESTINATION_LON` | *(uit)* | Optionele vaste bestemmings-coördinaten (slaat geocoding over) |
-| `ETA_CRON` | *(uit)* | Cron-expressie (5 velden!) voor de ETA-mail, bijv. `0 6 * * 1-5` = werkdagen 06:00 |
+| `ETA_LEAD_MINUTES` | `60` | Zoveel minuten vóór de afgesproken tijd (`planned_at`) wordt de ETA-mail verstuurd |
+| `ETA_CRON` | *(uit)* | Cron-expressie (5 velden!) voor ritten zónder afgesproken tijd, bijv. `0 6 * * 1-5` = werkdagen 06:00 |
 | `SMTP_HOST` … `SMTP_PASSWORD` | *(uit)* | SMTP-server voor het versturen; zonder `SMTP_HOST` wordt het rapport naar de console geprint (dry-run) |
 | `MAIL_FROM` / `MAIL_TO` | *(uit)* | Afzender en ontvanger van het rapport |
 | `DATA_DIR` | `data` | Map voor de opslag van laatst bekende posities |
@@ -83,7 +84,12 @@ De service start automatisch bij boot en herstart bij een crash. Na een `git pul
 
 ## ETA-mail
 
-Op het tijdstip uit `ETA_CRON` worden de actuele trailer/bestemming-combinaties bepaald — uit de MSSQL-database via de query in `ETA_QUERY_FILE`, of anders de vaste `ETA_VEHICLE`/`ETA_DESTINATION_ADDRESS` uit de `.env`. Per combinatie wordt de rijtijd van de laatst bekende positie naar de bestemming berekend (routering via de publieke OSRM-server, geocoding via Nominatim) en als track & trace-achtige mail verstuurd, met een statusbalk in drie stappen:
+De trailer/bestemming-combinaties komen uit de MSSQL-database via de query in `ETA_QUERY_FILE` (of anders de vaste `ETA_VEHICLE`/`ETA_DESTINATION_ADDRESS` uit de `.env`). Het verzendmoment is dynamisch:
+
+- **Ritten mét afgesproken tijd** (`planned_at` in de query): de planner checkt de database elke 5 minuten en verstuurt de mail `ETA_LEAD_MINUTES` (standaard 60) minuten vóór de afgesproken tijd. Een verzonden-administratie in `DATA_DIR` voorkomt dubbele mails, ook na een herstart; is het verzendmoment meer dan een uur verstreken (bv. doordat de service uitstond), dan wordt de mail overgeslagen.
+- **Ritten zónder afgesproken tijd**: die gaan mee op het vaste `ETA_CRON`-tijdstip, als dat is ingesteld.
+
+Per rit wordt de rijtijd van de laatst bekende positie naar de bestemming berekend (routering via de publieke OSRM-server, geocoding via Nominatim) en als track & trace-achtige mail verstuurd. Ligt de verwachte aankomst ruim na de afgesproken tijd, dan meldt de mail dat expliciet. De statusbalk kent drie stappen:
 
 - **On the way** — onderweg, met resterende afstand, rijtijd en verwachte aankomsttijd
 - **Almost there** — minder dan een uur rijden van de bestemming

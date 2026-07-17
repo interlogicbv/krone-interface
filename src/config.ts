@@ -43,8 +43,10 @@ export interface Config {
   /** Optional fixed destination coordinates; skips geocoding when set. */
   etaDestinationLat: number | undefined;
   etaDestinationLon: number | undefined;
-  /** Cron expression for the ETA mail, e.g. "0 6 * * 1-5" (weekdays 06:00). Empty = no schedule. */
+  /** Cron expression for ETA mails of trips WITHOUT an agreed time. Empty = no schedule. */
   etaCron: string | undefined;
+  /** How many minutes before the agreed time (planned_at) the ETA mail is sent. */
+  etaLeadMinutes: number;
   /** Path to the SQL file that selects the trailer/destination combinations. */
   etaQueryFile: string;
 
@@ -92,6 +94,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     etaDestinationLat: env.ETA_DESTINATION_LAT ? Number(env.ETA_DESTINATION_LAT) : undefined,
     etaDestinationLon: env.ETA_DESTINATION_LON ? Number(env.ETA_DESTINATION_LON) : undefined,
     etaCron: env.ETA_CRON,
+    etaLeadMinutes: Number(env.ETA_LEAD_MINUTES ?? 60),
     etaQueryFile: env.ETA_QUERY_FILE ?? 'eta-query.sql',
 
     mssqlServer: env.MSSQL_SERVER,

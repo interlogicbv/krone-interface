@@ -7,9 +7,13 @@
 --                                 coordinaten zijn meegegeven)
 --   destination_lat  optioneel  - vaste latitude van de bestemming
 --   destination_lon  optioneel  - vaste longitude van de bestemming
+--   planned_at       optioneel  - afgesproken (los)tijd als 'YYYY-MM-DD HH:mm:ss'
+--                                 in TIMEZONE; de mail wordt ETA_LEAD_MINUTES
+--                                 (standaard 60) minuten hiervoor verstuurd
 --   mail_to          optioneel  - afwijkende ontvanger; anders MAIL_TO uit .env
 --
--- Elke rij levert één ETA-mail op.
+-- Elke rij levert één ETA-mail op. Rijen zonder planned_at worden alleen
+-- verstuurd op de vaste ETA_CRON-tijd (als die is ingesteld).
 
 SELECT DISTINCT
     V.License                           AS vehicle,
@@ -19,7 +23,9 @@ SELECT DISTINCT
         UA.CountryCode
     )                                   AS destination,
     UA.Latitude                         AS destination_lat,
-    UA.Longitude                        AS destination_lon
+    UA.Longitude                        AS destination_lon,
+    CONVERT(varchar(10), A.Date, 23) + ' ' + CONVERT(varchar(8), A.TimeTill, 108)
+                                        AS planned_at
 FROM
     SO_LEG L
     INNER JOIN SO_SalesOrder SO ON L.SalesOrder = SO.SalesOrdernr

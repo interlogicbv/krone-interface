@@ -1,6 +1,8 @@
 import { Cron } from 'croner';
 import { loadConfig } from './config.js';
+import { isDbConfigured } from './db.js';
 import { sendEtaMails } from './eta.js';
+import { EtaPlanner } from './planner.js';
 import { buildServer } from './server.js';
 import { PositionStore } from './store.js';
 
@@ -19,11 +21,21 @@ try {
   process.exit(1);
 }
 
+// Trips with an agreed time (planned_at) get their mail ETA_LEAD_MINUTES
+// before that moment, driven by the planner.
+let planner: EtaPlanner | undefined;
+if (isDbConfigured(config)) {
+  planner = new EtaPlanner(config, store);
+  planner.start(app.log);
+}
+
+// Trips without an agreed time (and the env fallback) go out on the fixed
+// ETA_CRON schedule, if configured.
 let etaJob: Cron | undefined;
 if (config.etaCron) {
   etaJob = new Cron(config.etaCron, { timezone: config.timezone }, async () => {
     try {
-      const results = await sendEtaMails(config, store);
+      const results = await sendEtaMails(config, store, { excludePlanned: isDbConfigured(config) });
       for (const r of results) {
         if (r.error) {
           app.log.error({ vehicle: r.target.vehicle, error: r.error }, 'ETA mail failed');
@@ -43,6 +55,7 @@ if (config.etaCron) {
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, async () => {
+    planner?.stop();
     etaJob?.stop();
     await app.close();
     store.flush();
