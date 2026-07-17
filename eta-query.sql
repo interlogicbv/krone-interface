@@ -36,5 +36,17 @@ FROM
     INNER JOIN RP_Resource RS ON RC.Trailer = RS.Resourcenr
     INNER JOIN VM_Vehicle V ON RS.Vehicle = V.Vehiclenr
 WHERE
-    R.Name = 'Kramp Groep B.V.'
+    -- Klant toevoegen? Zet de naam erbij in deze lijst. Het bestand wordt
+    -- elke 5 minuten opnieuw ingelezen; een herstart is niet nodig.
+    R.Name IN (
+        'Kramp Groep B.V.'
+        -- , 'Volgende Klant B.V.'
+    )
     AND CAST(A.Date AS Date) = CAST(CURRENT_TIMESTAMP AS Date)
+
+-- Tip: wil je per klant een andere ontvanger, voeg dan in de SELECT een
+-- mail_to-kolom toe, bijvoorbeeld:
+--   CASE R.Name
+--       WHEN 'Kramp Groep B.V.' THEN 'planning@kramp.com'
+--       ELSE NULL  -- NULL = standaard MAIL_TO uit .env
+--   END AS mail_to

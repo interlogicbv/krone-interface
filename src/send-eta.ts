@@ -22,6 +22,8 @@ const results = await sendEtaMails(effectiveConfig, store);
 for (const r of results) {
   if (r.error) {
     console.error(`FAILED ${r.target.vehicle} -> ${r.target.destinationAddress}: ${r.error}`);
+  } else if (r.skipped) {
+    console.log(`SKIPPED ${r.target.vehicle} -> ${r.target.destinationAddress}: ${r.skipped}`);
   } else if (!dry && effectiveConfig.smtpHost && effectiveConfig.mailTo) {
     console.log(`Sent for ${r.target.vehicle}: "${r.subject}"`);
   }

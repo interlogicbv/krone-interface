@@ -82,6 +82,12 @@ export class EtaPlanner {
         }
 
         const result = await this.sendMail(this.config, this.store, target);
+        if (result.skipped) {
+          // No position (yet) for this trailer: leave it unmarked, so it is
+          // retried every pass until the grace window closes — if Krone data
+          // arrives in the meantime, the mail still goes out.
+          continue;
+        }
         this.markSent(key, result.error ? `failed: ${result.error}` : 'sent');
         if (result.error) {
           log.error({ vehicle: target.vehicle, error: result.error }, 'ETA mail failed');

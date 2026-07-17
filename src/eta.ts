@@ -154,27 +154,16 @@ export async function buildEtaMail(
   config: Config,
   store: PositionStore,
   target: EtaTarget,
-): Promise<EtaMailContent> {
+): Promise<EtaMailContent | undefined> {
   const vehicleId = target.vehicle;
   const destinationAddress = target.destinationAddress;
   const tz = config.timezone;
   const destinationShort = destinationAddress.split(',')[0]!.trim();
   const position = store.find(vehicleId);
-
   if (!position || position.latitude === undefined || position.longitude === undefined) {
-    const text = `No known position for trailer "${vehicleId}", so no ETA to ${destinationAddress} could be calculated.`;
-    return {
-      subject: `⚠️ ${vehicleId}: no known position`,
-      text,
-      html: renderMail(`
-        <tr>
-          <td style="padding:15px; font-size:13px; color:#333;">
-            <h1 style="margin:0 0 10px 0; font-size:20px; color:#001a2d;">No position available</h1>
-            <p style="color:#c0392b;">${text}</p>
-          </td>
-        </tr>
-      `),
-    };
+    // Trailers without GPS (or without Krone data yet) are simply skipped;
+    // the caller decides whether to retry later.
+    return undefined;
   }
 
   const destination =
@@ -322,6 +311,8 @@ async function resolveTargets(config: Config): Promise<EtaTarget[]> {
 export interface SentEtaMail {
   target: EtaTarget;
   subject: string;
+  /** Set when no mail was sent, with the reason (e.g. trailer without GPS data). */
+  skipped?: string;
   error?: string;
 }
 
@@ -336,6 +327,9 @@ export async function sendOneEtaMail(
 ): Promise<SentEtaMail> {
   try {
     const mail = await buildEtaMail(config, store, target);
+    if (!mail) {
+      return { target, subject: '(skipped)', skipped: 'no known position for this trailer' };
+    }
     const to = target.mailTo ?? config.mailTo;
     if (!config.smtpHost || !to) {
       console.log('--- E-mail (dry-run, no SMTP configured) ---');
