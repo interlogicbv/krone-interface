@@ -31,6 +31,8 @@ export interface Config {
 
   /** Directory for the JSON position store. */
   dataDir: string;
+  /** Log a summary line for every received push; disable for large fleets to keep the journal small. */
+  logPushes: boolean;
   /** IANA timezone for the schedule and formatted times in the email. */
   timezone: string;
 
@@ -82,6 +84,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     trustProxy: env.TRUST_PROXY === 'true',
 
     dataDir: env.DATA_DIR ?? 'data',
+    logPushes: env.LOG_PUSHES !== 'false',
     timezone: env.TIMEZONE ?? 'Europe/Amsterdam',
 
     etaVehicle: env.ETA_VEHICLE,

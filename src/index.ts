@@ -45,6 +45,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, async () => {
     etaJob?.stop();
     await app.close();
+    store.flush();
     process.exit(0);
   });
 }

@@ -94,6 +94,10 @@ export function buildServer(config: Config, store: PositionStore): FastifyInstan
           },
         }
       : true,
+    // Our own summary line per push is more informative than the default
+    // incoming/completed pair, and scanners probing the public port would
+    // otherwise fill the journal with 404 noise.
+    disableRequestLogging: true,
     trustProxy: config.trustProxy,
   });
 
@@ -139,7 +143,9 @@ export function buildServer(config: Config, store: PositionStore): FastifyInstan
       return reply.code(400).send(body);
     }
 
-    request.log.info(extractGeoSummary(push), 'trailer position received');
+    if (config.logPushes) {
+      request.log.info(extractGeoSummary(push), 'trailer position received');
+    }
     store.record(push);
 
     const body: KroneSuccessResponse = { id: push.id, received, status: 'OK' };

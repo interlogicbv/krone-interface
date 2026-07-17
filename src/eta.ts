@@ -334,7 +334,9 @@ export async function sendEtaMails(config: Config, store: PositionStore): Promis
       });
 
   const results: SentEtaMail[] = [];
-  for (const target of targets) {
+  for (const [index, target] of targets.entries()) {
+    // Pace requests to the public OSRM/Nominatim servers (~1 req/s policy).
+    if (index > 0) await new Promise((resolve) => setTimeout(resolve, 1200));
     try {
       const mail = await buildEtaMail(config, store, target);
       const to = target.mailTo ?? config.mailTo;

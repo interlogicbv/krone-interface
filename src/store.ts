@@ -1,4 +1,5 @@
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { KronePushRequest } from './types/krone.js';
 
@@ -32,6 +33,8 @@ export interface LastPosition {
 export class PositionStore {
   private positions = new Map<string, LastPosition>();
   private readonly filePath: string;
+  private persistTimer: NodeJS.Timeout | undefined;
+  private persistPending = false;
 
   constructor(dataDir: string) {
     mkdirSync(dataDir, { recursive: true });
@@ -105,7 +108,34 @@ export class PositionStore {
     );
   }
 
+  /**
+   * Debounced write: with a full fleet pushing every few minutes, rewriting
+   * the file synchronously on every push would needlessly block the event
+   * loop. Writes are batched to at most once per second.
+   */
   private persist(): void {
-    writeFileSync(this.filePath, JSON.stringify(this.all(), null, 2));
+    this.persistPending = true;
+    if (this.persistTimer) return;
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = undefined;
+      if (!this.persistPending) return;
+      this.persistPending = false;
+      void writeFile(this.filePath, JSON.stringify(this.all(), null, 2)).catch((err) => {
+        console.error('persisting positions failed:', err);
+      });
+    }, 1000);
+    this.persistTimer.unref();
+  }
+
+  /** Writes any pending changes synchronously; call on shutdown. */
+  flush(): void {
+    if (this.persistTimer) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = undefined;
+    }
+    if (this.persistPending) {
+      this.persistPending = false;
+      writeFileSync(this.filePath, JSON.stringify(this.all(), null, 2));
+    }
   }
 }
