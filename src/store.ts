@@ -96,15 +96,17 @@ export class PositionStore {
    * Finds a vehicle by license plate, VH_ID, asset name or box ID.
    * Matching is case-insensitive and ignores dashes/spaces, so the TMS
    * notation "OT-84-LL" matches the Krone notation "OT84LL" and vice versa.
+   * Composite names like "Interlogic 25 / OT-93-KB" also match on each part.
    */
   find(identifier: string): LastPosition | undefined {
     const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
     const needle = normalize(identifier);
     if (needle === '') return undefined;
+    const matches = (v: string | undefined) =>
+      v !== undefined &&
+      [v, ...v.split('/')].some((part) => normalize(part) === needle);
     return this.all().find((p) =>
-      [p.vehicleKey, p.license, p.assetName, p.boxId, p.chassis].some(
-        (v) => v !== undefined && normalize(v) === needle,
-      ),
+      [p.vehicleKey, p.license, p.assetName, p.boxId, p.chassis].some(matches),
     );
   }
 
