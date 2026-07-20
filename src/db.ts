@@ -13,6 +13,8 @@ export interface EtaTarget {
   destinationLon?: number;
   /** Agreed (unloading) time; the mail is sent ETA_LEAD_MINUTES before this. */
   plannedAt?: Date;
+  /** Loading address the trailer departed from; shown in the mail. */
+  origin?: string;
   /** Optional recipient override; falls back to MAIL_TO. */
   mailTo?: string;
 }
@@ -120,12 +122,14 @@ export async function fetchEtaTargets(config: Config): Promise<EtaTarget[]> {
       const lon = asCoordinate(pick(row, 'destination_lon', 'lon', 'longitude'));
       const mailTo = pick(row, 'mail_to', 'email', 'recipient');
       const plannedAt = parsePlannedAt(plannedRaw, config.timezone);
+      const origin = pick(row, 'origin', 'loading_address', 'from');
       targets.push({
         vehicle: vehicle.trim(),
         destinationAddress: destination.trim(),
         // Only use fixed coordinates when both are present and valid.
         ...(lat !== undefined && lon !== undefined && { destinationLat: lat, destinationLon: lon }),
         ...(plannedAt !== undefined && { plannedAt }),
+        ...(typeof origin === 'string' && origin.trim() !== '' && { origin: origin.trim() }),
         ...(typeof mailTo === 'string' && mailTo.trim() !== '' && { mailTo: mailTo.trim() }),
       });
     }

@@ -10,6 +10,7 @@
 --   planned_at       optioneel  - afgesproken (los)tijd als 'YYYY-MM-DD HH:mm:ss'
 --                                 in TIMEZONE; de mail wordt ETA_LEAD_MINUTES
 --                                 (standaard 60) minuten hiervoor verstuurd
+--   origin           optioneel  - laadadres; wordt in de mail getoond
 --   mail_to          optioneel  - afwijkende ontvanger; anders MAIL_TO uit .env
 --
 -- Elke rij levert één ETA-mail op. Rijen zonder planned_at worden alleen
@@ -25,13 +26,20 @@ SELECT DISTINCT
     UA.Latitude                         AS destination_lat,
     UA.Longitude                        AS destination_lon,
     CONVERT(varchar(10), A.Date, 23) + ' ' + CONVERT(varchar(8), A.TimeTill, 108)
-                                        AS planned_at
+                                        AS planned_at,
+    CONCAT(
+        LA.Address, ', ',
+        LA.ZIPcode, ' ', LA.Cityname, ', ',
+        LA.CountryCode
+    )                                   AS origin
 FROM
     SO_LEG L
     INNER JOIN SO_SalesOrder SO ON L.SalesOrder = SO.SalesOrdernr
     INNER JOIN RM_Relation R ON SO.Customer = R.Relationnr
     INNER JOIN SO_Activity A ON L.EndActivity = A.Activitynr
     INNER JOIN RM_Address UA ON A.Address = UA.Addressnr
+    LEFT JOIN SO_Activity BA ON L.BeginActivity = BA.Activitynr
+    LEFT JOIN RM_Address LA ON BA.Address = LA.Addressnr
     INNER JOIN RP_ResourceCombination RC ON A.ResourceCombination = RC.ResourceCombinationnr
     INNER JOIN RP_Resource RS ON RC.Trailer = RS.Resourcenr
     INNER JOIN VM_Vehicle V ON RS.Vehicle = V.Vehiclenr

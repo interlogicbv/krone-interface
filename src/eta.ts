@@ -209,9 +209,13 @@ export async function buildEtaMail(
       ? `Currently expected about ${minutesLate} minutes later than the agreed time.`
       : undefined;
 
+  const originRow = target.origin
+    ? [['Loaded at', target.origin] as [string, string]]
+    : [];
   const rows: [string, string][] = arrived
     ? [
         ['Trailer', `${name}${position.license && position.license !== name ? ` (${position.license})` : ''}`],
+        ...originRow,
         ['Location', position.address ?? `${position.latitude}, ${position.longitude}`],
         ['Destination', destinationAddress],
         ...(planned ? [['Agreed time', formatTime(planned, tz)] as [string, string]] : []),
@@ -219,6 +223,7 @@ export async function buildEtaMail(
       ]
     : [
         ['Trailer', `${name}${position.license && position.license !== name ? ` (${position.license})` : ''}`],
+        ...originRow,
         ['Current location', position.address ?? `${position.latitude}, ${position.longitude}`],
         ['Destination', destinationAddress],
         ...(planned ? [['Agreed time', formatTime(planned, tz)] as [string, string]] : []),
