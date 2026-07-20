@@ -11,13 +11,17 @@
 --                                 in TIMEZONE; de mail wordt ETA_LEAD_MINUTES
 --                                 (standaard 60) minuten hiervoor verstuurd
 --   origin           optioneel  - laadadres; wordt in de mail getoond
---   mail_to          optioneel  - afwijkende ontvanger; anders MAIL_TO uit .env
+--   customer         optioneel  - klantnaam; bepaalt de ontvangers via de
+--                                 CUSTOMER_<n>_MAIL-adressen uit de .env
+--   mail_to          optioneel  - expliciete ontvanger; wint van customer,
+--                                 valt anders terug op MAIL_TO uit .env
 --
 -- Elke rij levert één ETA-mail op. Rijen zonder planned_at worden alleen
 -- verstuurd op de vaste ETA_CRON-tijd (als die is ingesteld).
 
 SELECT DISTINCT
     V.License                           AS vehicle,
+    R.Name                              AS customer,
     CONCAT(
         UA.Address, ', ',
         UA.ZIPcode, ' ', UA.Cityname, ', ',
@@ -44,17 +48,8 @@ FROM
     INNER JOIN RP_Resource RS ON RC.Trailer = RS.Resourcenr
     INNER JOIN VM_Vehicle V ON RS.Vehicle = V.Vehiclenr
 WHERE
-    -- Klant toevoegen? Zet de naam erbij in deze lijst. Het bestand wordt
-    -- elke 5 minuten opnieuw ingelezen; een herstart is niet nodig.
-    R.Name IN (
-        'Kramp Groep B.V.'
-        -- , 'Volgende Klant B.V.'
-    )
+    -- @customers wordt automatisch gevuld met de CUSTOMER_<n>_NAME-waarden
+    -- uit de .env (als veilige SQL-parameters). Klanten en hun mailadressen
+    -- beheer je dus in de .env, niet hier.
+    R.Name IN (@customers)
     AND CAST(A.Date AS Date) = CAST(CURRENT_TIMESTAMP AS Date)
-
--- Tip: wil je per klant een andere ontvanger, voeg dan in de SELECT een
--- mail_to-kolom toe, bijvoorbeeld:
---   CASE R.Name
---       WHEN 'Kramp Groep B.V.' THEN 'planning@kramp.com'
---       ELSE NULL  -- NULL = standaard MAIL_TO uit .env
---   END AS mail_to

@@ -1,5 +1,13 @@
 import { existsSync } from 'node:fs';
 
+/** One customer whose trips get ETA mails, configured via CUSTOMER_<n>_NAME/_MAIL. */
+export interface CustomerConfig {
+  /** Customer name exactly as it appears in the TMS (RM_Relation.Name). */
+  name: string;
+  /** Recipient(s) for this customer's ETA mails, comma-separated; falls back to MAIL_TO. */
+  mailTo: string | undefined;
+}
+
 /** Configuration via environment variables, with sensible defaults for local development. */
 
 export interface Config {
@@ -49,6 +57,8 @@ export interface Config {
   etaLeadMinutes: number;
   /** Path to the SQL file that selects the trailer/destination combinations. */
   etaQueryFile: string;
+  /** Customers whose trips get ETA mails; fills the @customers placeholder in the query. */
+  customers: CustomerConfig[];
 
   /** MSSQL connection for dynamic ETA targets; leave unset to use the ETA_* fallback. */
   mssqlServer: string | undefined;
@@ -71,6 +81,20 @@ export interface Config {
 
 /** Official source IPs of the Krone Push Default Service (per Swagger spec v1.8.1). */
 export const KRONE_PUSH_IPS = ['85.236.61.180', '85.236.61.181'];
+
+function loadCustomers(env: NodeJS.ProcessEnv): CustomerConfig[] {
+  const customers: { index: number; customer: CustomerConfig }[] = [];
+  for (const [key, value] of Object.entries(env)) {
+    const match = /^CUSTOMER_(\d+)_NAME$/.exec(key);
+    if (!match || !value?.trim()) continue;
+    const mail = env[`CUSTOMER_${match[1]}_MAIL`]?.trim();
+    customers.push({
+      index: Number(match[1]),
+      customer: { name: value.trim(), mailTo: mail || undefined },
+    });
+  }
+  return customers.sort((a, b) => a.index - b.index).map((c) => c.customer);
+}
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   // Node 20.12+ can load .env files natively; no dotenv dependency needed.
@@ -98,6 +122,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     etaCron: env.ETA_CRON,
     etaLeadMinutes: Number(env.ETA_LEAD_MINUTES ?? 60),
     etaQueryFile: env.ETA_QUERY_FILE ?? 'eta-query.sql',
+    customers: loadCustomers(env),
 
     mssqlServer: env.MSSQL_SERVER,
     mssqlDatabase: env.MSSQL_DATABASE,

@@ -38,6 +38,7 @@ npm start
 | `ENFORCE_IP_ALLOWLIST` | `false` | Bij `true` worden alleen requests van de officiële Krone push-IP's (`85.236.61.180`, `85.236.61.181`) geaccepteerd |
 | `TRUST_PROXY` | `false` | Alleen op `true` bij een reverse proxy ervoor (client-IP uit `X-Forwarded-For`). Bij directe exposure uit laten, anders is de IP-allowlist te spoofen |
 | `TIMEZONE` | `Europe/Amsterdam` | Tijdzone voor het schema en de tijden in de mail |
+| `CUSTOMER_<n>_NAME` / `CUSTOMER_<n>_MAIL` | *(uit)* | Per klant: TMS-naam en ontvangers (kommagescheiden). Vult de `@customers`-placeholder in de query en bepaalt per rit de geadresseerden |
 | `MSSQL_SERVER` … `MSSQL_PASSWORD` | *(uit)* | MSSQL-database voor dynamische trailer/bestemming-combinaties |
 | `ETA_QUERY_FILE` | `eta-query.sql` | SQL-bestand dat de ETA-targets selecteert (kolommen: `vehicle`, `destination`, optioneel `destination_lat`/`destination_lon`/`mail_to`) |
 | `ETA_VEHICLE` | *(uit)* | Fallback-trailer als er geen database is geconfigureerd |

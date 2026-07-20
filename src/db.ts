@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import sql from 'mssql';
-import type { Config } from './config.js';
+import type { Config, CustomerConfig } from './config.js';
 
 /** One trailer + destination combination for which an ETA mail is sent. */
 export interface EtaTarget {
@@ -79,17 +79,44 @@ function asCoordinate(value: unknown): number | undefined {
 }
 
 /**
+ * Replaces the `@customers` placeholder in the query with one bound SQL
+ * parameter per configured customer, so names never end up in the SQL text
+ * itself. Exported for testing.
+ */
+export function expandCustomers(
+  queryText: string,
+  customers: CustomerConfig[],
+): { sqlText: string; params: Record<string, string> } {
+  if (!/@customers\b/.test(queryText)) return { sqlText: queryText, params: {} };
+  if (customers.length === 0) {
+    throw new Error(
+      'The query uses @customers, but no customers are configured — add CUSTOMER_1_NAME (and CUSTOMER_1_MAIL) to .env',
+    );
+  }
+  const params: Record<string, string> = {};
+  const placeholders = customers.map((c, i) => {
+    params[`customer${i}`] = c.name;
+    return `@customer${i}`;
+  });
+  return { sqlText: queryText.replace(/@customers\b/g, placeholders.join(', ')), params };
+}
+
+/**
  * Runs the ETA query (from config.etaQueryFile) against the MSSQL database and
  * maps the rows to ETA targets.
  *
  * Column contract (case-insensitive): `vehicle` and `destination` are
- * required; `destination_lat`, `destination_lon` and `mail_to` are optional.
+ * required; `destination_lat`, `destination_lon`, `planned_at`, `origin`,
+ * `customer` and `mail_to` are optional. When a row carries a `customer`
+ * matching a CUSTOMER_<n>_NAME from .env, that customer's mail addresses are
+ * used (an explicit `mail_to` column still wins).
  */
 export async function fetchEtaTargets(config: Config): Promise<EtaTarget[]> {
   if (!config.mssqlServer || !config.mssqlDatabase || !config.mssqlUser || !config.mssqlPassword) {
     throw new Error('MSSQL_SERVER, MSSQL_DATABASE, MSSQL_USER and MSSQL_PASSWORD must be configured');
   }
   const queryText = readFileSync(config.etaQueryFile, 'utf8');
+  const { sqlText, params } = expandCustomers(queryText, config.customers);
 
   const pool = await sql.connect({
     server: config.mssqlServer,
@@ -106,7 +133,11 @@ export async function fetchEtaTargets(config: Config): Promise<EtaTarget[]> {
   });
 
   try {
-    const result = await pool.request().query<Record<string, unknown>>(queryText);
+    const request = pool.request();
+    for (const [name, value] of Object.entries(params)) {
+      request.input(name, sql.NVarChar, value);
+    }
+    const result = await request.query<Record<string, unknown>>(sqlText);
     const targets: EtaTarget[] = [];
     const seen = new Set<string>();
     for (const row of result.recordset) {
@@ -120,9 +151,17 @@ export async function fetchEtaTargets(config: Config): Promise<EtaTarget[]> {
       seen.add(key);
       const lat = asCoordinate(pick(row, 'destination_lat', 'lat', 'latitude'));
       const lon = asCoordinate(pick(row, 'destination_lon', 'lon', 'longitude'));
-      const mailTo = pick(row, 'mail_to', 'email', 'recipient');
       const plannedAt = parsePlannedAt(plannedRaw, config.timezone);
       const origin = pick(row, 'origin', 'loading_address', 'from');
+      // Recipients: an explicit mail_to column wins; otherwise the addresses
+      // configured for the row's customer; otherwise MAIL_TO (in eta.ts).
+      const customer = pick(row, 'customer', 'customer_name', 'klant');
+      const customerMail =
+        typeof customer === 'string'
+          ? config.customers.find((c) => c.name.toLowerCase() === customer.trim().toLowerCase())
+              ?.mailTo
+          : undefined;
+      const mailTo = pick(row, 'mail_to', 'email', 'recipient') ?? customerMail;
       targets.push({
         vehicle: vehicle.trim(),
         destinationAddress: destination.trim(),
