@@ -189,15 +189,15 @@ export async function buildEtaMail(
   const step: 0 | 1 | 2 = arrived ? 2 : almostThere ? 1 : 0;
 
   const headline = arrived
-    ? `${name} has arrived!`
+    ? 'Your shipment has arrived!'
     : almostThere
-      ? `${name} is almost there!`
-      : `${name} is on its way`;
+      ? 'Your shipment is almost there!'
+      : 'Your shipment is on its way';
   const subject = arrived
-    ? `✅ ${name} has arrived at ${destinationShort}`
+    ? `✅ Your shipment has arrived at ${destinationShort}`
     : almostThere
-      ? `🚚 ${name} is almost there — arrival ${arrival}`
-      : `🚚 ${name} is on its way — arrival ${arrival}`;
+      ? `🚚 Your shipment is almost there — arrival ${arrival}`
+      : `🚚 Your shipment is on its way — arrival ${arrival}`;
 
   const planned = target.plannedAt;
   const minutesLate = planned ? Math.round((eta.getTime() - planned.getTime()) / 60000) : 0;
@@ -211,7 +211,7 @@ export async function buildEtaMail(
     : [];
   const rows: [string, string][] = arrived
     ? [
-        ['Trailer', `${name}${position.license && position.license !== name ? ` (${position.license})` : ''}`],
+        ['Shipment', `${name}${position.license && position.license !== name ? ` (${position.license})` : ''}`],
         ...originRow,
         ['Location', position.address ?? `${position.latitude}, ${position.longitude}`],
         ['Destination', destinationAddress],
@@ -219,7 +219,7 @@ export async function buildEtaMail(
         ['Position received', formatTime(new Date(position.receivedAt), tz)],
       ]
     : [
-        ['Trailer', `${name}${position.license && position.license !== name ? ` (${position.license})` : ''}`],
+        ['Shipment', `${name}${position.license && position.license !== name ? ` (${position.license})` : ''}`],
         ...originRow,
         ['Current location', position.address ?? `${position.latitude}, ${position.longitude}`],
         ['Destination', destinationAddress],
@@ -242,7 +242,7 @@ export async function buildEtaMail(
     .join('');
 
   const heroTime = arrived
-    ? `<p style="margin:10px 0 0 0; font-size:14px; color:#333;">Your trailer is at</p>
+    ? `<p style="margin:10px 0 0 0; font-size:14px; color:#333;">Your shipment is at</p>
        <p style="margin:2px 0 0 0; font-size:26px; font-weight:bold; color:${TEAL};">${destinationShort}</p>`
     : `<p style="margin:10px 0 0 0; font-size:14px; color:#333;">Expected arrival</p>
        <p style="margin:2px 0 0 0; font-size:26px; font-weight:bold; color:${TEAL};">${arrival}</p>`;
@@ -250,7 +250,7 @@ export async function buildEtaMail(
   const bodyHtml = `
         <tr>
           <td style="padding:28px 15px 8px 15px; text-align:center;">
-            <p style="margin:0; font-size:11px; letter-spacing:2px; text-transform:uppercase; color:${TEAL}; font-weight:bold;">Trailer update</p>
+            <p style="margin:0; font-size:11px; letter-spacing:2px; text-transform:uppercase; color:${TEAL}; font-weight:bold;">Shipment update</p>
             <h1 style="margin:6px 0 0 0; font-size:24px; color:#001a2d;">${headline}</h1>
             ${heroTime}
             ${lateNote ? `<p style="margin:12px 0 0 0; font-size:13px; color:#c0392b;"><b>${lateNote}</b></p>` : ''}
@@ -282,7 +282,7 @@ export async function buildEtaMail(
         <tr>
           <td style="padding:0 15px 18px 15px; text-align:center;">
             <p style="margin:0; color:#999; font-size:11px;">
-              Arrival time is an estimate based on the trailer's most recent reported position,<br>
+              Arrival time is an estimate based on the shipment's most recent reported position,<br>
               excluding rest breaks and loading/unloading time.
             </p>
           </td>
@@ -291,14 +291,14 @@ export async function buildEtaMail(
 
   const text = [
     headline,
-    arrived ? `Your trailer is at ${destinationShort}.` : `Expected arrival: ${arrival}.`,
+    arrived ? `Your shipment is at ${destinationShort}.` : `Expected arrival: ${arrival}.`,
     ...(lateNote ? [lateNote] : []),
     '',
     ...rows.map(([label, value]) => `${label}: ${value}`),
     '',
     `Route: ${routeLink}`,
     '',
-    'Arrival time is an estimate based on the most recent reported position, excluding rest breaks and loading/unloading time.',
+    'Arrival time is an estimate based on the shipment\'s most recent reported position, excluding rest breaks and loading/unloading time.',
   ].join('\n');
 
   return { subject, text, html: renderMail(bodyHtml) };
