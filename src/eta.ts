@@ -193,9 +193,6 @@ export async function buildEtaMail(
     : almostThere
       ? `${name} is almost there!`
       : `${name} is on its way`;
-  const subline = arrived
-    ? `Your trailer is at ${destinationShort}.`
-    : `Expected arrival: <b>${arrival}</b>.`;
   const subject = arrived
     ? `✅ ${name} has arrived at ${destinationShort}`
     : almostThere
@@ -210,7 +207,7 @@ export async function buildEtaMail(
       : undefined;
 
   const originRow = target.origin
-    ? [['Loaded at', target.origin] as [string, string]]
+    ? [['Origin', target.origin] as [string, string]]
     : [];
   const rows: [string, string][] = arrived
     ? [
@@ -235,42 +232,57 @@ export async function buildEtaMail(
 
   const detailRows = rows
     .map(
-      ([label, value]) => `
+      ([label, value], index) => `
       <tr>
-        <td style="padding:8px; border-bottom:1px solid #eee; white-space:nowrap;"><b>${label}</b></td>
-        <td style="padding:8px; border-bottom:1px solid #eee;">${value}</td>
+        <td width="38%" style="padding:9px 14px; ${index < rows.length - 1 ? 'border-bottom:1px solid #e8ecef;' : ''} font-size:11px; letter-spacing:0.5px; text-transform:uppercase; color:#8a94a6; white-space:nowrap; vertical-align:top;">${label}</td>
+        <td style="padding:9px 14px; ${index < rows.length - 1 ? 'border-bottom:1px solid #e8ecef;' : ''} font-size:13px; color:#001a2d;">${value}</td>
       </tr>
     `,
     )
     .join('');
 
+  const heroTime = arrived
+    ? `<p style="margin:10px 0 0 0; font-size:14px; color:#333;">Your trailer is at</p>
+       <p style="margin:2px 0 0 0; font-size:26px; font-weight:bold; color:${TEAL};">${destinationShort}</p>`
+    : `<p style="margin:10px 0 0 0; font-size:14px; color:#333;">Expected arrival</p>
+       <p style="margin:2px 0 0 0; font-size:26px; font-weight:bold; color:${TEAL};">${arrival}</p>`;
+
   const bodyHtml = `
         <tr>
-          <td style="padding:20px 15px 5px 15px; text-align:center;">
-            <h1 style="margin:0; font-size:24px; color:#001a2d;">${headline}</h1>
-            <p style="margin:8px 0 0 0; font-size:14px; color:#333;">${subline}</p>
-            ${lateNote ? `<p style="margin:8px 0 0 0; font-size:13px; color:#c0392b;"><b>${lateNote}</b></p>` : ''}
+          <td style="padding:28px 15px 8px 15px; text-align:center;">
+            <p style="margin:0; font-size:11px; letter-spacing:2px; text-transform:uppercase; color:${TEAL}; font-weight:bold;">Trailer update</p>
+            <h1 style="margin:6px 0 0 0; font-size:24px; color:#001a2d;">${headline}</h1>
+            ${heroTime}
+            ${lateNote ? `<p style="margin:12px 0 0 0; font-size:13px; color:#c0392b;"><b>${lateNote}</b></p>` : ''}
           </td>
         </tr>
         <tr>
-          <td style="padding:10px 15px 20px 15px;">
+          <td style="padding:14px 15px 24px 15px;">
             ${renderTracker(step)}
           </td>
         </tr>
         <tr>
-          <td style="padding:0 15px 15px 15px;">
-            <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; font-size:13px;">
+          <td style="padding:0 15px 20px 15px;">
+            <table width="100%" cellpadding="0" cellspacing="0" bgcolor="#f8f9fa" style="border-collapse:collapse; background-color:#f8f9fa;">
               ${detailRows}
             </table>
           </td>
         </tr>
         <tr>
-          <td style="padding:0 15px 15px 15px; font-size:13px; color:#333;">
-            <p>
-              <a href="${routeLink}" style="font-weight:bold; color: ${TEAL}">View route in Google Maps</a>
-            </p>
-            <p style="color:#999; font-size:11px;">
-              Arrival time is an estimate based on the trailer's most recent reported position,
+          <td style="padding:0 15px 22px 15px;" align="center">
+            <table cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td bgcolor="${TEAL}" style="background-color:${TEAL}; border-radius:4px;">
+                  <a href="${routeLink}" style="display:inline-block; padding:11px 28px; font-size:13px; font-weight:bold; color:#ffffff; text-decoration:none;">View route in Google Maps</a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0 15px 18px 15px; text-align:center;">
+            <p style="margin:0; color:#999; font-size:11px;">
+              Arrival time is an estimate based on the trailer's most recent reported position,<br>
               excluding rest breaks and loading/unloading time.
             </p>
           </td>
