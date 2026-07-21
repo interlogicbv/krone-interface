@@ -21,8 +21,8 @@ try {
   process.exit(1);
 }
 
-// Trips with an agreed time (planned_at) get their mail ETA_LEAD_MINUTES
-// before that moment, driven by the planner.
+// Trips with an agreed time (planned_at) are monitored by the planner, which
+// mails the customer only when the shipment is running late.
 let planner: EtaPlanner | undefined;
 if (isDbConfigured(config)) {
   planner = new EtaPlanner(config, store);

@@ -53,8 +53,10 @@ export interface Config {
   etaDestinationLon: number | undefined;
   /** Cron expression for ETA mails of trips WITHOUT an agreed time. Empty = no schedule. */
   etaCron: string | undefined;
-  /** How many minutes before the agreed time (planned_at) the ETA mail is sent. */
-  etaLeadMinutes: number;
+  /** A shipment counts as delayed when its estimated arrival exceeds the agreed time by more than this. */
+  lateThresholdMinutes: number;
+  /** After the first delay mail, re-notify only when the delay grows by at least this many minutes. */
+  lateStepMinutes: number;
   /** Path to the SQL file that selects the trailer/destination combinations. */
   etaQueryFile: string;
   /** Customers whose trips get ETA mails; fills the @customers placeholder in the query. */
@@ -120,7 +122,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     etaDestinationLat: env.ETA_DESTINATION_LAT ? Number(env.ETA_DESTINATION_LAT) : undefined,
     etaDestinationLon: env.ETA_DESTINATION_LON ? Number(env.ETA_DESTINATION_LON) : undefined,
     etaCron: env.ETA_CRON,
-    etaLeadMinutes: Number(env.ETA_LEAD_MINUTES ?? 60),
+    lateThresholdMinutes: Number(env.LATE_THRESHOLD_MINUTES ?? 15),
+    lateStepMinutes: Number(env.LATE_STEP_MINUTES ?? 30),
     etaQueryFile: env.ETA_QUERY_FILE ?? 'eta-query.sql',
     customers: loadCustomers(env),
 

@@ -1,7 +1,7 @@
 import nodemailer from 'nodemailer';
 import type { Config } from './config.js';
 import { fetchEtaTargets, isDbConfigured, type EtaTarget } from './db.js';
-import type { PositionStore } from './store.js';
+import type { LastPosition, PositionStore } from './store.js';
 
 const USER_AGENT = 'krone-interface (Interlogic trailer tracking)';
 
@@ -150,26 +150,43 @@ function renderTracker(step: 0 | 1 | 2): string {
   `;
 }
 
-export async function buildEtaMail(
+/** Everything needed to decide whether to mail and to render the mail. */
+export interface ShipmentStatus {
+  target: EtaTarget;
+  name: string;
+  position: LastPosition;
+  destination: Coordinates;
+  destinationShort: string;
+  arrived: boolean;
+  almostThere: boolean;
+  route: Route;
+  eta: Date;
+  arrival: string;
+  distanceKm: number;
+  routeLink: string;
+  /** Minutes the estimated arrival exceeds the agreed time; undefined without an agreed time. */
+  minutesLate: number | undefined;
+}
+
+/**
+ * Computes the current shipment status (position, route, ETA, lateness) for a
+ * target. Returns undefined when the trailer has no known position (no GPS or
+ * no Krone data yet). Makes one OSRM call unless the trailer has arrived.
+ */
+export async function computeShipmentStatus(
   config: Config,
   store: PositionStore,
   target: EtaTarget,
-): Promise<EtaMailContent | undefined> {
-  const vehicleId = target.vehicle;
-  const destinationAddress = target.destinationAddress;
-  const tz = config.timezone;
-  const destinationShort = destinationAddress.split(',')[0]!.trim();
-  const position = store.find(vehicleId);
+): Promise<ShipmentStatus | undefined> {
+  const position = store.find(target.vehicle);
   if (!position || position.latitude === undefined || position.longitude === undefined) {
-    // Trailers without GPS (or without Krone data yet) are simply skipped;
-    // the caller decides whether to retry later.
     return undefined;
   }
 
   const destination =
     target.destinationLat !== undefined && target.destinationLon !== undefined
       ? { latitude: target.destinationLat, longitude: target.destinationLon }
-      : await geocode(destinationAddress);
+      : await geocode(target.destinationAddress);
 
   const current: Coordinates = { latitude: position.latitude, longitude: position.longitude };
   // Arrival is judged by straight-line distance: route distance is unreliable
@@ -179,31 +196,52 @@ export async function buildEtaMail(
     ? { durationSeconds: 0, distanceMeters: 0 }
     : await fetchRoute(current, destination);
 
-  const name = position.assetName ?? position.license ?? position.vehicleKey;
   const eta = new Date(Date.now() + route.durationSeconds * 1000);
-  const distanceKm = Math.round(route.distanceMeters / 1000);
-  const arrival = formatArrival(eta, tz);
-  const routeLink = `https://www.google.com/maps/dir/${position.latitude},${position.longitude}/${destination.latitude},${destination.longitude}`;
+  return {
+    target,
+    name: position.assetName ?? position.license ?? position.vehicleKey,
+    position,
+    destination,
+    destinationShort: target.destinationAddress.split(',')[0]!.trim(),
+    arrived,
+    almostThere: !arrived && route.durationSeconds <= ALMOST_THERE_WITHIN_SECONDS,
+    route,
+    eta,
+    arrival: formatArrival(eta, config.timezone),
+    distanceKm: Math.round(route.distanceMeters / 1000),
+    routeLink: `https://www.google.com/maps/dir/${position.latitude},${position.longitude}/${destination.latitude},${destination.longitude}`,
+    minutesLate: target.plannedAt
+      ? Math.round((eta.getTime() - target.plannedAt.getTime()) / 60000)
+      : undefined,
+  };
+}
 
-  const almostThere = !arrived && route.durationSeconds <= ALMOST_THERE_WITHIN_SECONDS;
+/** Renders the shipment mail from a computed status. Pure (no I/O). */
+export function renderEtaMail(config: Config, status: ShipmentStatus): EtaMailContent {
+  const { target, name, position, destination, destinationShort, arrived, almostThere, route, arrival, distanceKm, routeLink, minutesLate } = status;
+  const tz = config.timezone;
+  const planned = target.plannedAt;
+  const delayed = !arrived && minutesLate !== undefined && minutesLate > config.lateThresholdMinutes;
   const step: 0 | 1 | 2 = arrived ? 2 : almostThere ? 1 : 0;
 
   const headline = arrived
     ? 'Your shipment has arrived!'
-    : almostThere
-      ? 'Your shipment is almost there!'
-      : 'Your shipment is on its way';
+    : delayed
+      ? 'Your shipment is delayed'
+      : almostThere
+        ? 'Your shipment is almost there!'
+        : 'Your shipment is on its way';
   const subject = arrived
     ? `✅ Your shipment has arrived at ${destinationShort}`
-    : almostThere
-      ? `🚚 Your shipment is almost there — arrival ${arrival}`
-      : `🚚 Your shipment is on its way — arrival ${arrival}`;
+    : delayed
+      ? `⚠️ Your shipment is delayed — new arrival ${arrival}`
+      : almostThere
+        ? `🚚 Your shipment is almost there — arrival ${arrival}`
+        : `🚚 Your shipment is on its way — arrival ${arrival}`;
 
-  const planned = target.plannedAt;
-  const minutesLate = planned ? Math.round((eta.getTime() - planned.getTime()) / 60000) : 0;
   const lateNote =
-    !arrived && planned && minutesLate > 15
-      ? `Currently expected about ${minutesLate} minutes later than the agreed time.`
+    delayed && planned
+      ? `Currently expected about ${minutesLate} minutes later than the agreed time (${formatTime(planned, tz)}).`
       : undefined;
 
   const originRow = target.origin
@@ -214,7 +252,7 @@ export async function buildEtaMail(
         ['Shipment', `${name}${position.license && position.license !== name ? ` (${position.license})` : ''}`],
         ...originRow,
         ['Location', position.address ?? `${position.latitude}, ${position.longitude}`],
-        ['Destination', destinationAddress],
+        ['Destination', target.destinationAddress],
         ...(planned ? [['Agreed time', formatTime(planned, tz)] as [string, string]] : []),
         ['Position received', formatTime(new Date(position.receivedAt), tz)],
       ]
@@ -222,7 +260,7 @@ export async function buildEtaMail(
         ['Shipment', `${name}${position.license && position.license !== name ? ` (${position.license})` : ''}`],
         ...originRow,
         ['Current location', position.address ?? `${position.latitude}, ${position.longitude}`],
-        ['Destination', destinationAddress],
+        ['Destination', target.destinationAddress],
         ...(planned ? [['Agreed time', formatTime(planned, tz)] as [string, string]] : []),
         ['Remaining distance', `${distanceKm} km`],
         ['Remaining driving time', formatDuration(route.durationSeconds)],
@@ -241,16 +279,17 @@ export async function buildEtaMail(
     )
     .join('');
 
+  const accent = delayed ? '#c0392b' : TEAL;
   const heroTime = arrived
     ? `<p style="margin:10px 0 0 0; font-size:14px; color:#333;">Your shipment is at</p>
        <p style="margin:2px 0 0 0; font-size:26px; font-weight:bold; color:${TEAL};">${destinationShort}</p>`
-    : `<p style="margin:10px 0 0 0; font-size:14px; color:#333;">Expected arrival</p>
-       <p style="margin:2px 0 0 0; font-size:26px; font-weight:bold; color:${TEAL};">${arrival}</p>`;
+    : `<p style="margin:10px 0 0 0; font-size:14px; color:#333;">${delayed ? 'New expected arrival' : 'Expected arrival'}</p>
+       <p style="margin:2px 0 0 0; font-size:26px; font-weight:bold; color:${accent};">${arrival}</p>`;
 
   const bodyHtml = `
         <tr>
           <td style="padding:28px 15px 8px 15px; text-align:center;">
-            <p style="margin:0; font-size:11px; letter-spacing:2px; text-transform:uppercase; color:${TEAL}; font-weight:bold;">Shipment update</p>
+            <p style="margin:0; font-size:11px; letter-spacing:2px; text-transform:uppercase; color:${accent}; font-weight:bold;">${delayed ? 'Delay notice' : 'Shipment update'}</p>
             <h1 style="margin:6px 0 0 0; font-size:24px; color:#001a2d;">${headline}</h1>
             ${heroTime}
             ${lateNote ? `<p style="margin:12px 0 0 0; font-size:13px; color:#c0392b;"><b>${lateNote}</b></p>` : ''}
@@ -304,6 +343,52 @@ export async function buildEtaMail(
   return { subject, text, html: renderMail(bodyHtml) };
 }
 
+/** Computes the status and renders the mail; undefined when there is no position. */
+export async function buildEtaMail(
+  config: Config,
+  store: PositionStore,
+  target: EtaTarget,
+): Promise<EtaMailContent | undefined> {
+  const status = await computeShipmentStatus(config, store, target);
+  return status ? renderEtaMail(config, status) : undefined;
+}
+
+/**
+ * Delivers a rendered mail to the target's recipients (its own mailTo, else
+ * MAIL_TO). Without SMTP configuration it is printed to the console (dry-run).
+ * Throws on delivery failure.
+ */
+export async function deliverEtaMail(
+  config: Config,
+  target: EtaTarget,
+  mail: EtaMailContent,
+): Promise<void> {
+  const to = target.mailTo ?? config.mailTo;
+  if (!config.smtpHost || !to) {
+    console.log('--- E-mail (dry-run, no SMTP configured) ---');
+    console.log(`To: ${to ?? '(MAIL_TO not set)'}`);
+    console.log(`Subject: ${mail.subject}`);
+    console.log(mail.text);
+    console.log('--------------------------------------------');
+    return;
+  }
+  const transporter = nodemailer.createTransport({
+    host: config.smtpHost,
+    port: config.smtpPort,
+    secure: config.smtpSecure,
+    ...(config.smtpUser && config.smtpPassword
+      ? { auth: { user: config.smtpUser, pass: config.smtpPassword } }
+      : {}),
+  });
+  await transporter.sendMail({
+    from: config.mailFrom ?? config.smtpUser ?? to,
+    to,
+    subject: mail.subject,
+    text: mail.text,
+    html: mail.html,
+  });
+}
+
 /**
  * Resolves the trailer/destination combinations: from the MSSQL database when
  * configured, otherwise the single ETA_* env fallback.
@@ -347,30 +432,7 @@ export async function sendOneEtaMail(
     if (!mail) {
       return { target, subject: '(skipped)', skipped: 'no known position for this trailer' };
     }
-    const to = target.mailTo ?? config.mailTo;
-    if (!config.smtpHost || !to) {
-      console.log('--- E-mail (dry-run, no SMTP configured) ---');
-      console.log(`To: ${to ?? '(MAIL_TO not set)'}`);
-      console.log(`Subject: ${mail.subject}`);
-      console.log(mail.text);
-      console.log('--------------------------------------------');
-    } else {
-      const transporter = nodemailer.createTransport({
-        host: config.smtpHost,
-        port: config.smtpPort,
-        secure: config.smtpSecure,
-        ...(config.smtpUser && config.smtpPassword
-          ? { auth: { user: config.smtpUser, pass: config.smtpPassword } }
-          : {}),
-      });
-      await transporter.sendMail({
-        from: config.mailFrom ?? config.smtpUser ?? to,
-        to,
-        subject: mail.subject,
-        text: mail.text,
-        html: mail.html,
-      });
-    }
+    await deliverEtaMail(config, target, mail);
     return { target, subject: mail.subject };
   } catch (err) {
     return {
